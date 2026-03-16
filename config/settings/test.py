@@ -1,0 +1,185 @@
+"""Test settings — uses SQLite in-memory, disables throttling and external services."""
+
+from datetime import timedelta
+from pathlib import Path
+
+# ── Paths ───────────────────────────────────────────────────────
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+# ── Core ────────────────────────────────────────────────────────
+SECRET_KEY = "test-secret-key-not-for-production"
+DEBUG = True
+ALLOWED_HOSTS = ["*"]
+
+# ── Installed Apps ──────────────────────────────────────────────
+DJANGO_APPS = [
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+]
+
+THIRD_PARTY_APPS = [
+    "rest_framework",
+    "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
+    "corsheaders",
+    "django_filters",
+]
+
+LOCAL_APPS = [
+    "apps.common",
+    "apps.accounts",
+    "apps.social",
+    "apps.bible",
+    "apps.shop",
+    "apps.notifications",
+    "apps.analytics",
+    "apps.verse_of_day",
+    "apps.admin_panel",
+]
+
+INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
+
+# ── Custom User Model ──────────────────────────────────────────
+AUTH_USER_MODEL = "accounts.User"
+
+# ── Middleware ──────────────────────────────────────────────────
+MIDDLEWARE = [
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+]
+
+# ── URLs & ASGI ─────────────────────────────────────────────────
+ROOT_URLCONF = "config.urls"
+WSGI_APPLICATION = "config.wsgi.application"
+
+# ── Database (SQLite in-memory for tests) ──────────────────────
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": ":memory:",
+    }
+}
+
+# ── REST Framework (throttling disabled for tests) ─────────────
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
+    "DEFAULT_PAGINATION_CLASS": "apps.common.pagination.StandardPageNumberPagination",
+    "PAGE_SIZE": 20,
+    "DEFAULT_FILTER_BACKENDS": [
+        "django_filters.rest_framework.DjangoFilterBackend",
+        "rest_framework.filters.SearchFilter",
+        "rest_framework.filters.OrderingFilter",
+    ],
+    "DEFAULT_THROTTLE_CLASSES": [],
+    "DEFAULT_THROTTLE_RATES": {},
+    "EXCEPTION_HANDLER": "apps.common.exceptions.custom_exception_handler",
+    "TEST_REQUEST_DEFAULT_FORMAT": "json",
+}
+
+# ── Simple JWT ──────────────────────────────────────────────────
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=60),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "ALGORITHM": "HS256",
+    "AUTH_HEADER_TYPES": ("Bearer",),
+}
+
+# ── Cache (local memory for tests) ─────────────────────────────
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+    },
+}
+
+# ── Templates ───────────────────────────────────────────────────
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.debug",
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+            ],
+        },
+    },
+]
+
+# ── Password Validation (disabled for test speed) ─────────────
+AUTH_PASSWORD_VALIDATORS = []
+
+# ── Static & Media ──────────────────────────────────────────────
+STATIC_URL = "/static/"
+MEDIA_URL = "/media/"
+
+# ── Storage: use default file system for tests ──────────────────
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
+
+# ── Upload size limits ─────────────────────────────────────────
+DATA_UPLOAD_MAX_MEMORY_SIZE = 104857600
+FILE_UPLOAD_MAX_MEMORY_SIZE = 104857600
+
+# ── Internationalization ────────────────────────────────────────
+LANGUAGE_CODE = "en-us"
+TIME_ZONE = "UTC"
+USE_I18N = True
+USE_TZ = True
+
+# ── External API Keys (dummy for tests) ────────────────────────
+API_BIBLE_KEY = "test-api-bible-key"
+RESEND_API_KEY = "test-resend-key"
+GOOGLE_TRANSLATE_API_KEY = "test-translate-key"
+APPLE_SHARED_SECRET = "test-apple-secret"
+APPLE_BUNDLE_ID = "com.bibleway.test"
+ANDROID_PACKAGE_NAME = "com.bibleway.test"
+
+# ── UploadThing (dummy for tests) ──────────────────────────────
+UPLOADTHING_TOKEN = "test-token"
+UPLOADTHING_APP_ID = "test-app-id"
+
+# ── Celery (eager for tests) ──────────────────────────────────
+CELERY_TASK_ALWAYS_EAGER = True
+CELERY_TASK_EAGER_PROPAGATES = True
+
+# ── Default PK ──────────────────────────────────────────────────
+DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# ── Logging (quiet for tests) ──────────────────────────────────
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": True,
+    "handlers": {
+        "null": {
+            "class": "logging.NullHandler",
+        },
+    },
+    "root": {
+        "handlers": ["null"],
+        "level": "CRITICAL",
+    },
+}
