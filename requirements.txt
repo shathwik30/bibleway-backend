@@ -1,1 +1,44 @@
--r requirements/prod.txt
+# Core
+Django>=5.1,<6.0
+djangorestframework>=3.15,<4.0
+djangorestframework-simplejwt>=5.3,<6.0
+django-cors-headers>=4.3,<5.0
+django-filter>=24.1,<25.0
+
+# Database
+dj-database-url>=2.1,<3.0
+psycopg[binary]>=3.1,<4.0
+
+# Async / WebSocket
+channels>=4.0,<5.0
+channels-redis>=4.2,<5.0
+daphne>=4.1,<5.0
+
+# Task Queue
+celery>=5.4,<6.0
+redis>=5.0,<6.0
+
+# Push Notifications
+firebase-admin>=6.4,<7.0
+
+# Email
+resend>=2.0,<3.0
+
+# Translation
+google-cloud-translate>=3.15,<4.0
+
+# Environment
+python-decouple>=3.8,<4.0
+
+# Monitoring
+sentry-sdk[django,celery]>=2.0,<3.0
+
+# HTTP Client (API Bible proxy)
+requests>=2.31,<3.0
+
+# Utilities
+Pillow>=10.2,<11.0
+gunicorn>=22.0,<23.0
+
+# Production
+whitenoise>=6.6,<7.0
