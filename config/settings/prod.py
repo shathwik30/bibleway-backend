@@ -30,7 +30,7 @@ STORAGES["staticfiles"] = {  # noqa: F405
 # ── Sentry ──────────────────────────────────────────────────────
 
 _sentry_dsn = config("SENTRY_DSN", default="")
-if _sentry_dsn:
+if _sentry_dsn and _sentry_dsn.startswith("https://"):
     sentry_sdk.init(
         dsn=_sentry_dsn,
         integrations=[DjangoIntegration(), CeleryIntegration()],
