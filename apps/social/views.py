@@ -85,7 +85,14 @@ class PostViewSet(FeedViewSet):
     # -- Standard actions --------------------------------------------------
 
     def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        queryset = self.get_queryset()
+        author_id = request.query_params.get("author")
+        if author_id:
+            queryset = self._post_service.get_user_posts(
+                user_id=UUID(author_id),
+                requesting_user=request.user,
+            )
+        else:
+            queryset = self.get_queryset()
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = PostListSerializer(page, many=True, context=self.get_serializer_context())
@@ -238,7 +245,14 @@ class PrayerViewSet(FeedViewSet):
     # -- Standard actions --------------------------------------------------
 
     def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        queryset = self.get_queryset()
+        author_id = request.query_params.get("author")
+        if author_id:
+            queryset = self._prayer_service.get_user_prayers(
+                user_id=UUID(author_id),
+                requesting_user=request.user,
+            )
+        else:
+            queryset = self.get_queryset()
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = PrayerListSerializer(page, many=True, context=self.get_serializer_context())
