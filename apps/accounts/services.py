@@ -212,6 +212,7 @@ class UserService(BaseService[User]):
             "preferred_language",
             "country",
             "phone_number",
+            "date_of_birth",
         }
         update_data: dict[str, Any] = {
             k: v for k, v in validated_data.items() if k in allowed_fields

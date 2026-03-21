@@ -36,6 +36,7 @@ class AuthorSerializer(serializers.Serializer):
     id = serializers.UUIDField(read_only=True)
     full_name = serializers.CharField(read_only=True)
     profile_photo = serializers.ImageField(read_only=True)
+    age = serializers.IntegerField(read_only=True)
 
 
 # ---------------------------------------------------------------------------
@@ -84,33 +85,49 @@ class PostMediaSerializer(InlineMediaSerializer):
 
 
 class PostCreateSerializer(serializers.Serializer):
-    """Validates input for creating a new post."""
+    """Validates input for creating a new post.
+
+    Accepts either ``media_keys`` (UploadThing file keys from client-side
+    uploads) or ``media_files`` (legacy server-side upload). ``media_keys``
+    is the preferred path.
+    """
 
     text_content = serializers.CharField(
         max_length=2000, required=False, default="", allow_blank=True
     )
-    media_files = serializers.ListField(
-        child=serializers.FileField(), required=False, max_length=10
+    # Client-side upload: UploadThing file keys
+    media_keys = serializers.ListField(
+        child=serializers.CharField(max_length=500), required=False, max_length=10
     )
     media_types = serializers.ListField(
         child=serializers.ChoiceField(choices=PostMedia.MediaType.choices),
         required=False,
         max_length=10,
     )
+    # Legacy server-side upload (kept for backward compatibility)
+    media_files = serializers.ListField(
+        child=serializers.FileField(), required=False, max_length=10
+    )
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         text_content: str = attrs.get("text_content", "")
+        media_keys: list[str] = attrs.get("media_keys", [])
         media_files: list[Any] = attrs.get("media_files", [])
         media_types: list[str] = attrs.get("media_types", [])
 
-        if not text_content and not media_files:
+        has_media = bool(media_keys) or bool(media_files)
+
+        if not text_content and not has_media:
             raise serializers.ValidationError(
                 "A post must have text content or at least one media file."
             )
 
-        if len(media_files) != len(media_types):
+        # Determine which media source to validate against
+        media_count = len(media_keys) if media_keys else len(media_files)
+
+        if media_count > 0 and len(media_types) != media_count:
             raise serializers.ValidationError(
-                "media_files and media_types must have the same length."
+                "media_types must match the number of media items."
             )
 
         # Enforce media constraints: max 10 images or 1 video, not both.
@@ -118,24 +135,21 @@ class PostCreateSerializer(serializers.Serializer):
         image_count = sum(1 for mt in media_types if mt == PostMedia.MediaType.IMAGE)
 
         if video_count > 1:
-            raise serializers.ValidationError(
-                "A post can have at most 1 video."
-            )
+            raise serializers.ValidationError("A post can have at most 1 video.")
         if video_count > 0 and image_count > 0:
             raise serializers.ValidationError(
                 "A post with a video cannot also have images."
             )
         if image_count > 10:
-            raise serializers.ValidationError(
-                "A post can have at most 10 images."
-            )
+            raise serializers.ValidationError("A post can have at most 10 images.")
 
-        # Per-file size and type validation.
-        for file, media_type in zip(media_files, media_types):
-            if media_type == PostMedia.MediaType.IMAGE:
-                validate_image_file(file)
-            elif media_type == PostMedia.MediaType.VIDEO:
-                validate_video_file(file)
+        # Per-file validation only for legacy server-side uploads
+        if media_files and not media_keys:
+            for file, media_type in zip(media_files, media_types):
+                if media_type == PostMedia.MediaType.IMAGE:
+                    validate_image_file(file)
+                elif media_type == PostMedia.MediaType.VIDEO:
+                    validate_video_file(file)
 
         return attrs
 
@@ -215,47 +229,48 @@ class PrayerCreateSerializer(serializers.Serializer):
     description = serializers.CharField(
         max_length=2000, required=False, default="", allow_blank=True
     )
-    media_files = serializers.ListField(
-        child=serializers.FileField(), required=False, max_length=10
+    media_keys = serializers.ListField(
+        child=serializers.CharField(max_length=500), required=False, max_length=10
     )
     media_types = serializers.ListField(
         child=serializers.ChoiceField(choices=PrayerMedia.MediaType.choices),
         required=False,
         max_length=10,
     )
+    media_files = serializers.ListField(
+        child=serializers.FileField(), required=False, max_length=10
+    )
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        media_keys: list[str] = attrs.get("media_keys", [])
         media_files: list[Any] = attrs.get("media_files", [])
         media_types: list[str] = attrs.get("media_types", [])
 
-        if len(media_files) != len(media_types):
+        media_count = len(media_keys) if media_keys else len(media_files)
+
+        if media_count > 0 and len(media_types) != media_count:
             raise serializers.ValidationError(
-                "media_files and media_types must have the same length."
+                "media_types must match the number of media items."
             )
 
-        # Enforce same media constraints as PostCreateSerializer.
         video_count = sum(1 for mt in media_types if mt == PrayerMedia.MediaType.VIDEO)
         image_count = sum(1 for mt in media_types if mt == PrayerMedia.MediaType.IMAGE)
 
         if video_count > 1:
-            raise serializers.ValidationError(
-                "A prayer can have at most 1 video."
-            )
+            raise serializers.ValidationError("A prayer can have at most 1 video.")
         if video_count > 0 and image_count > 0:
             raise serializers.ValidationError(
                 "A prayer with a video cannot also have images."
             )
         if image_count > 10:
-            raise serializers.ValidationError(
-                "A prayer can have at most 10 images."
-            )
+            raise serializers.ValidationError("A prayer can have at most 10 images.")
 
-        # Per-file size and type validation.
-        for file, media_type in zip(media_files, media_types):
-            if media_type == PrayerMedia.MediaType.IMAGE:
-                validate_image_file(file)
-            elif media_type == PrayerMedia.MediaType.VIDEO:
-                validate_video_file(file)
+        if media_files and not media_keys:
+            for file, media_type in zip(media_files, media_types):
+                if media_type == PrayerMedia.MediaType.IMAGE:
+                    validate_image_file(file)
+                elif media_type == PrayerMedia.MediaType.VIDEO:
+                    validate_video_file(file)
 
         return attrs
 

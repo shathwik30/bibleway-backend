@@ -54,7 +54,7 @@ class UserProfileSerializer(BaseModelSerializer):
     """Context-aware profile serializer.
 
     When viewing own profile: all fields including PII.
-    When viewing another user's profile: PII fields excluded.
+    When viewing another user's profile: PII fields excluded, follow_status added.
     """
 
     age = serializers.IntegerField(read_only=True)
@@ -62,6 +62,7 @@ class UserProfileSerializer(BaseModelSerializer):
     following_count = serializers.IntegerField(read_only=True, default=0)
     post_count = serializers.IntegerField(read_only=True, default=0)
     prayer_count = serializers.IntegerField(read_only=True, default=0)
+    follow_status = serializers.SerializerMethodField()
 
     PRIVATE_FIELDS = {"email", "phone_number", "date_of_birth", "is_email_verified"}
 
@@ -87,8 +88,26 @@ class UserProfileSerializer(BaseModelSerializer):
             "following_count",
             "post_count",
             "prayer_count",
+            "follow_status",
         ]
         read_only_fields = fields
+
+    def get_follow_status(self, obj) -> str:
+        """Return 'none', 'following', or 'requested' for the requesting user."""
+        request_user = self.context.get("user")
+        if not request_user or isinstance(obj, list):
+            return "none"
+        if request_user.id == obj.id:
+            return "self"
+        from apps.accounts.models import FollowRelationship
+        rel = FollowRelationship.objects.filter(
+            follower_id=request_user.id, following_id=obj.id
+        ).values_list("status", flat=True).first()
+        if rel is None:
+            return "none"
+        if rel == FollowRelationship.Status.ACCEPTED:
+            return "following"
+        return "requested"
 
     def get_fields(self):
         fields = super().get_fields()
@@ -115,14 +134,17 @@ class UserUpdateSerializer(serializers.Serializer):
     phone_number = serializers.CharField(
         max_length=20, required=False, allow_blank=True
     )
+    date_of_birth = serializers.DateField(required=False)
 
 
 class UserListSerializer(BaseModelSerializer):
     """Minimal user representation for lists and search results."""
 
+    age = serializers.IntegerField(read_only=True)
+
     class Meta:
         model = User
-        fields = ["id", "full_name", "profile_photo", "bio"]
+        fields = ["id", "full_name", "profile_photo", "bio", "age"]
         read_only_fields = fields
 
 

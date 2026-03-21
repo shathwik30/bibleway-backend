@@ -355,10 +355,10 @@ class ApiBibleProxyView(BaseAPIView):
         GET /bible/api-bible/bibles/<bible_id>/books/
     """
 
-    API_BIBLE_BASE_URL: str = "https://api.scripture.api.bible/v1"
+    API_BIBLE_BASE_URL: str = "https://rest.api.bible/v1"
 
     # Allowlist of valid top-level path prefixes for the upstream API.
-    ALLOWED_PATH_PREFIXES: tuple[str, ...] = ("bibles",)
+    ALLOWED_PATH_PREFIXES: tuple[str, ...] = ("bibles", "audio-bibles")
 
     def get(self, request: Request, path: str = "") -> Response:
         api_key: str = getattr(settings, "API_BIBLE_KEY", "")
@@ -390,7 +390,7 @@ class ApiBibleProxyView(BaseAPIView):
 
         try:
             upstream_response = requests.get(
-                url, headers=headers, params=params, timeout=15,
+                url, headers=headers, params=params, timeout=30,
             )
         except requests.RequestException as exc:
             logger.exception("API Bible proxy request failed: %s", exc)
@@ -398,7 +398,6 @@ class ApiBibleProxyView(BaseAPIView):
                 detail="API Bible service is temporarily unavailable."
             )
 
-        # Return upstream response as-is (status code + body).
         try:
             body = upstream_response.json()
         except (ValueError, requests.exceptions.JSONDecodeError):
@@ -410,4 +409,12 @@ class ApiBibleProxyView(BaseAPIView):
                 detail="API Bible returned an unexpected response format."
             )
 
-        return Response(body, status=upstream_response.status_code)
+        # If upstream returned an error, forward it.
+        if upstream_response.status_code >= 400:
+            return Response(body, status=upstream_response.status_code)
+
+        # Unwrap the API Bible envelope ({"data": ..., "meta": ...})
+        # and re-wrap in our standard {message, data} format so the
+        # frontend response interceptor can handle it uniformly.
+        api_data = body.get("data", body)
+        return self.success_response(data=api_data)
