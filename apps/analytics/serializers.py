@@ -4,7 +4,25 @@ from rest_framework import serializers
 
 from apps.common.serializers import BaseModelSerializer
 
-from .models import BoostAnalyticSnapshot, PostBoost
+from .models import BoostAnalyticSnapshot, PostBoost, PostView
+
+
+# ---------------------------------------------------------------------------
+# View recording serializer
+# ---------------------------------------------------------------------------
+
+
+class RecordViewSerializer(serializers.Serializer):
+    """Validates input for recording a content view or share."""
+
+    content_type_model = serializers.ChoiceField(
+        choices=[("post", "Post"), ("prayer", "Prayer")]
+    )
+    object_id = serializers.UUIDField()
+    view_type = serializers.ChoiceField(
+        choices=PostView.ViewType.choices,
+        default=PostView.ViewType.VIEW,
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -66,12 +66,14 @@ class PostViewService(BaseService[PostView]):
         content_type_model: str,
         object_id: UUID,
         viewer_id: UUID | None = None,
+        view_type: str = PostView.ViewType.VIEW,
     ) -> PostView:
-        """Record a view on a post or prayer.
+        """Record a view or share on a post or prayer.
 
         Anonymous views are allowed (viewer_id=None).
         De-duplicates views from the same user on the same content
         within a 1-hour window to avoid inflated counts.
+        Shares are never de-duplicated (each share is a distinct action).
         """
         ct = _resolve_viewable_content_type(content_type_model)
 
@@ -82,13 +84,14 @@ class PostViewService(BaseService[PostView]):
                 detail=f"{content_type_model.capitalize()} with id '{object_id}' not found."
             )
 
-        # De-duplicate: check if a view from the same user exists within the last hour
-        if viewer_id is not None:
+        # De-duplicate views (not shares) from the same user within the last hour
+        if view_type == PostView.ViewType.VIEW and viewer_id is not None:
             one_hour_ago = timezone.now() - timedelta(hours=1)
             existing = PostView.objects.filter(
                 content_type=ct,
                 object_id=object_id,
                 viewer_id=viewer_id,
+                view_type=PostView.ViewType.VIEW,
                 created_at__gte=one_hour_ago,
             ).exists()
             if existing:
@@ -97,12 +100,14 @@ class PostViewService(BaseService[PostView]):
                     content_type=ct,
                     object_id=object_id,
                     viewer_id=viewer_id,
+                    view_type=PostView.ViewType.VIEW,
                 ).order_by("-created_at").first()
 
         view = PostView.objects.create(
             content_type=ct,
             object_id=object_id,
             viewer_id=viewer_id,
+            view_type=view_type,
         )
         return view
 
@@ -115,7 +120,19 @@ class PostViewService(BaseService[PostView]):
         """Return total view count for a piece of content."""
         ct = _resolve_viewable_content_type(content_type_model)
         return PostView.objects.filter(
-            content_type=ct, object_id=object_id
+            content_type=ct, object_id=object_id, view_type=PostView.ViewType.VIEW,
+        ).count()
+
+    def get_share_count(
+        self,
+        *,
+        content_type_model: str,
+        object_id: UUID,
+    ) -> int:
+        """Return total share count for a piece of content."""
+        ct = _resolve_viewable_content_type(content_type_model)
+        return PostView.objects.filter(
+            content_type=ct, object_id=object_id, view_type=PostView.ViewType.SHARE,
         ).count()
 
 
@@ -252,9 +269,14 @@ class PostBoostService(BaseService[PostBoost]):
         logger.info("Deactivated %d expired boosts.", count)
         return count
 
-    def get_active_boosts(self, *, user_id: UUID) -> QuerySet[PostBoost]:
-        """Return all active boosts for a user."""
-        return self.get_queryset().filter(user_id=user_id, is_active=True)
+    def get_user_boosts(
+        self, *, user_id: UUID, active_only: bool = False
+    ) -> QuerySet[PostBoost]:
+        """Return boosts for a user. Optionally filter to active only."""
+        qs = self.get_queryset().filter(user_id=user_id)
+        if active_only:
+            qs = qs.filter(is_active=True)
+        return qs
 
     def get_boost_analytics(
         self,
@@ -309,7 +331,11 @@ class AnalyticsService:
         ct = ContentType.objects.get_for_model(Post)
 
         view_count = PostView.objects.filter(
-            content_type=ct, object_id=post_id
+            content_type=ct, object_id=post_id, view_type=PostView.ViewType.VIEW,
+        ).count()
+
+        share_count = PostView.objects.filter(
+            content_type=ct, object_id=post_id, view_type=PostView.ViewType.SHARE,
         ).count()
 
         post = Post.objects.filter(pk=post_id).annotate(
@@ -321,7 +347,7 @@ class AnalyticsService:
             "views": view_count,
             "reactions": post.reaction_count if post else 0,
             "comments": post.comment_count if post else 0,
-            "shares": 0,  # Share tracking not yet implemented; shares generate deep links only
+            "shares": share_count,
         }
 
     def get_user_analytics(self, *, user_id: UUID) -> dict[str, Any]:

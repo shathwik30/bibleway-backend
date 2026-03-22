@@ -13,13 +13,15 @@ from apps.common.throttles import BoostRateThrottle
 from apps.common.views import BaseAPIView
 
 from .models import PostBoost
+from .models import PostView
 from .serializers import (
     BoostAnalyticSnapshotSerializer,
     PostAnalyticsSerializer,
     PostBoostCreateSerializer,
     PostBoostSerializer,
+    RecordViewSerializer,
 )
-from .services import AnalyticsService, PostBoostService
+from .services import AnalyticsService, PostBoostService, PostViewService
 
 
 # ---------------------------------------------------------------------------
@@ -62,6 +64,34 @@ class UserAnalyticsView(BaseAPIView):
 
 
 # ---------------------------------------------------------------------------
+# View / share recording
+# ---------------------------------------------------------------------------
+
+
+class RecordViewView(BaseAPIView):
+    """POST /analytics/views/ -- record a content view or share."""
+
+    permission_classes = [IsAuthenticated]
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._view_service = PostViewService()
+
+    def post(self, request: Request) -> Response:
+        serializer = RecordViewSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        self._view_service.record_view(
+            content_type_model=data["content_type_model"],
+            object_id=data["object_id"],
+            viewer_id=request.user.id,
+            view_type=data.get("view_type", PostView.ViewType.VIEW),
+        )
+        return self.success_response(message="Recorded.")
+
+
+# ---------------------------------------------------------------------------
 # Boost views
 # ---------------------------------------------------------------------------
 
@@ -99,7 +129,12 @@ class PostBoostCreateView(BaseAPIView):
 
 
 class PostBoostListView(BaseAPIView):
-    """GET /analytics/boosts/ -- list current user's active boosts."""
+    """GET /analytics/boosts/list/ -- list current user's boosts.
+
+    Query params:
+        active_only (bool): If "true", only return active boosts.
+                            Defaults to false (returns all boosts).
+    """
 
     permission_classes = [IsAuthenticated]
 
@@ -108,8 +143,10 @@ class PostBoostListView(BaseAPIView):
         self._boost_service = PostBoostService()
 
     def get(self, request: Request) -> Response:
-        boosts = self._boost_service.get_active_boosts(
+        active_only = request.query_params.get("active_only", "").lower() == "true"
+        boosts = self._boost_service.get_user_boosts(
             user_id=request.user.id,
+            active_only=active_only,
         )
 
         paginator = StandardPageNumberPagination()

@@ -8,7 +8,11 @@ from apps.social.models import Post
 
 
 class PostView(CreatedAtModel):
-    """Records a view of a Post or Prayer."""
+    """Records a view or share of a Post or Prayer."""
+
+    class ViewType(models.TextChoices):
+        VIEW = "view", "View"
+        SHARE = "share", "Share"
 
     content_type = models.ForeignKey(
         ContentType,
@@ -25,13 +29,19 @@ class PostView(CreatedAtModel):
         blank=True,
         related_name="post_views",
     )
+    view_type = models.CharField(
+        max_length=10,
+        choices=ViewType.choices,
+        default=ViewType.VIEW,
+        db_index=True,
+    )
 
     class Meta:
         verbose_name = "post view"
         verbose_name_plural = "post views"
         ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=["content_type", "object_id"]),
+            models.Index(fields=["content_type", "object_id", "view_type"]),
             models.Index(fields=["viewer"]),
             models.Index(fields=["viewer", "content_type", "object_id", "created_at"]),
         ]

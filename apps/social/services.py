@@ -1,12 +1,25 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any
 from uuid import UUID
 
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import UploadedFile
 from django.db import transaction
-from django.db.models import Count, IntegerField, OuterRef, Prefetch, QuerySet, Subquery
+from django.db.models import (
+    Case,
+    CharField,
+    Count,
+    DateTimeField,
+    F,
+    IntegerField,
+    OuterRef,
+    Prefetch,
+    QuerySet,
+    Subquery,
+    When,
+)
 from django.db.models.functions import Coalesce
 
 from apps.accounts.models import User
@@ -143,12 +156,30 @@ class PostService(BaseService[Post]):
             comment_count=Coalesce(Subquery(comment_sq), 0, output_field=IntegerField()),
         )
 
+    def _annotate_user_reaction(
+        self, qs: QuerySet[Post], *, requesting_user: User
+    ) -> QuerySet[Post]:
+        """Annotate user_reaction_type to avoid N+1 queries in serializers."""
+        ct = ContentType.objects.get_for_model(Post)
+        user_reaction_sq = (
+            Reaction.objects.filter(
+                content_type=ct,
+                object_id=OuterRef("pk"),
+                user_id=requesting_user.id,
+            )
+            .values("emoji_type")[:1]
+        )
+        return qs.annotate(
+            user_reaction_type=Subquery(user_reaction_sq, output_field=CharField()),
+        )
+
     def _get_annotated_queryset(self, *, requesting_user: User) -> QuerySet[Post]:
-        """Base queryset with block filtering and count annotations."""
+        """Base queryset with block filtering, count annotations, and user reaction."""
         blocked_user_ids = get_blocked_user_ids(requesting_user.id)
-        return self._annotate_counts(
+        qs = self._annotate_counts(
             self.get_queryset().exclude(author_id__in=blocked_user_ids)
         )
+        return self._annotate_user_reaction(qs, requesting_user=requesting_user)
 
     def get_feed(
         self,
@@ -159,19 +190,27 @@ class PostService(BaseService[Post]):
 
         - Excludes posts from users who have blocked (or are blocked by) the
           requesting user.
-        - Boosted posts are included regardless of follow status; they are
-          surfaced by the default ``-created_at`` ordering (cursor pagination
-          handles the rest).
+        - Boosted posts receive a 24-hour ranking boost, making them appear
+          as if they were posted 24 hours later for sorting purposes.
         """
-        return self._get_annotated_queryset(requesting_user=requesting_user)
+        qs = self._get_annotated_queryset(requesting_user=requesting_user)
+        return qs.annotate(
+            feed_rank=Case(
+                When(is_boosted=True, then=F("created_at") + timedelta(hours=24)),
+                default=F("created_at"),
+                output_field=DateTimeField(),
+            ),
+        )
 
     def get_by_id_for_user(self, pk: UUID, *, requesting_user: User) -> Post:
         """Retrieve a single post with block filtering and count annotations."""
         blocked_user_ids = get_blocked_user_ids(requesting_user.id)
         try:
-            return self._annotate_counts(
+            qs = self._annotate_counts(
                 self.get_queryset().exclude(author_id__in=blocked_user_ids)
-            ).get(pk=pk)
+            )
+            qs = self._annotate_user_reaction(qs, requesting_user=requesting_user)
+            return qs.get(pk=pk)
         except Post.DoesNotExist:
             raise NotFoundError(
                 detail=f"Post with id '{pk}' not found."
@@ -187,8 +226,13 @@ class PostService(BaseService[Post]):
         blocked_user_ids = get_blocked_user_ids(requesting_user.id)
         if user_id in blocked_user_ids:
             return Post.objects.none()
-        return self._annotate_counts(
+        qs = self._annotate_counts(
             self.get_queryset().filter(author_id=user_id)
+        )
+        qs = self._annotate_user_reaction(qs, requesting_user=requesting_user)
+        # Annotate feed_rank (no boost priority for user-profile listings)
+        return qs.annotate(
+            feed_rank=F("created_at"),
         )
 
     @transaction.atomic
@@ -197,36 +241,37 @@ class PostService(BaseService[Post]):
         *,
         author: User,
         text_content: str = "",
-        media_files: list[UploadedFile] | None = None,
+        media_keys: list[str] | None = None,
         media_types: list[str] | None = None,
+        media_files: list[UploadedFile] | None = None,
     ) -> Post:
         """Create a post with optional media attachments.
 
-        ``media_files`` and ``media_types`` must be equal-length lists when
-        provided.  Validation of counts/types is left to the serializer layer;
-        this service focuses on persistence.
+        Media can be provided as:
+        - ``media_keys``: UploadThing file keys (preferred, from client upload)
+        - ``media_files``: Raw uploaded files (legacy, server-side upload)
         """
-        if not text_content and not media_files:
+        has_media = bool(media_keys) or bool(media_files)
+        if not text_content and not has_media:
             raise BadRequestError(
                 detail="A post must have text content or at least one media file."
             )
 
-        if media_files and media_types:
-            validate_media_constraints(media_files, media_types, label="post")
-
         post = Post.objects.create(author=author, text_content=text_content)
 
-        if media_files and media_types:
+        if media_keys and media_types:
+            # Client-side uploaded: store UploadThing keys directly
             post_media_items = [
-                PostMedia(
-                    post=post,
-                    file=file,
-                    media_type=media_type,
-                    order=idx,
-                )
-                for idx, (file, media_type) in enumerate(
-                    zip(media_files, media_types)
-                )
+                PostMedia(post=post, file=key, media_type=mt, order=idx)
+                for idx, (key, mt) in enumerate(zip(media_keys, media_types))
+            ]
+            PostMedia.objects.bulk_create(post_media_items)
+        elif media_files and media_types:
+            # Legacy server-side upload
+            validate_media_constraints(media_files, media_types, label="post")
+            post_media_items = [
+                PostMedia(post=post, file=f, media_type=mt, order=idx)
+                for idx, (f, mt) in enumerate(zip(media_files, media_types))
             ]
             PostMedia.objects.bulk_create(post_media_items)
 
@@ -292,12 +337,30 @@ class PrayerService(BaseService[Prayer]):
             comment_count=Coalesce(Subquery(comment_sq), 0, output_field=IntegerField()),
         )
 
+    def _annotate_user_reaction(
+        self, qs: QuerySet[Prayer], *, requesting_user: User
+    ) -> QuerySet[Prayer]:
+        """Annotate user_reaction_type to avoid N+1 queries in serializers."""
+        ct = ContentType.objects.get_for_model(Prayer)
+        user_reaction_sq = (
+            Reaction.objects.filter(
+                content_type=ct,
+                object_id=OuterRef("pk"),
+                user_id=requesting_user.id,
+            )
+            .values("emoji_type")[:1]
+        )
+        return qs.annotate(
+            user_reaction_type=Subquery(user_reaction_sq, output_field=CharField()),
+        )
+
     def _get_annotated_queryset(self, *, requesting_user: User) -> QuerySet[Prayer]:
-        """Base queryset with block filtering and count annotations."""
+        """Base queryset with block filtering, count annotations, and user reaction."""
         blocked_user_ids = get_blocked_user_ids(requesting_user.id)
-        return self._annotate_counts(
+        qs = self._annotate_counts(
             self.get_queryset().exclude(author_id__in=blocked_user_ids)
         )
+        return self._annotate_user_reaction(qs, requesting_user=requesting_user)
 
     def get_feed(
         self,
@@ -311,9 +374,11 @@ class PrayerService(BaseService[Prayer]):
         """Retrieve a single prayer with block filtering and count annotations."""
         blocked_user_ids = get_blocked_user_ids(requesting_user.id)
         try:
-            return self._annotate_counts(
+            qs = self._annotate_counts(
                 self.get_queryset().exclude(author_id__in=blocked_user_ids)
-            ).get(pk=pk)
+            )
+            qs = self._annotate_user_reaction(qs, requesting_user=requesting_user)
+            return qs.get(pk=pk)
         except Prayer.DoesNotExist:
             raise NotFoundError(
                 detail=f"Prayer with id '{pk}' not found."
@@ -329,9 +394,10 @@ class PrayerService(BaseService[Prayer]):
         blocked_user_ids = get_blocked_user_ids(requesting_user.id)
         if user_id in blocked_user_ids:
             return Prayer.objects.none()
-        return self._annotate_counts(
+        qs = self._annotate_counts(
             self.get_queryset().filter(author_id=user_id)
         )
+        return self._annotate_user_reaction(qs, requesting_user=requesting_user)
 
     @transaction.atomic
     def create_prayer(
@@ -340,30 +406,28 @@ class PrayerService(BaseService[Prayer]):
         author: User,
         title: str,
         description: str = "",
-        media_files: list[UploadedFile] | None = None,
+        media_keys: list[str] | None = None,
         media_types: list[str] | None = None,
+        media_files: list[UploadedFile] | None = None,
     ) -> Prayer:
         """Create a prayer request with optional media."""
-        if media_files and media_types:
-            validate_media_constraints(media_files, media_types, label="prayer")
-
         prayer = Prayer.objects.create(
             author=author,
             title=title,
             description=description,
         )
 
-        if media_files and media_types:
+        if media_keys and media_types:
             prayer_media_items = [
-                PrayerMedia(
-                    prayer=prayer,
-                    file=file,
-                    media_type=media_type,
-                    order=idx,
-                )
-                for idx, (file, media_type) in enumerate(
-                    zip(media_files, media_types)
-                )
+                PrayerMedia(prayer=prayer, file=key, media_type=mt, order=idx)
+                for idx, (key, mt) in enumerate(zip(media_keys, media_types))
+            ]
+            PrayerMedia.objects.bulk_create(prayer_media_items)
+        elif media_files and media_types:
+            validate_media_constraints(media_files, media_types, label="prayer")
+            prayer_media_items = [
+                PrayerMedia(prayer=prayer, file=f, media_type=mt, order=idx)
+                for idx, (f, mt) in enumerate(zip(media_files, media_types))
             ]
             PrayerMedia.objects.bulk_create(prayer_media_items)
 

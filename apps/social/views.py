@@ -9,8 +9,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from apps.common.pagination import FeedCursorPagination, StandardPageNumberPagination
+from apps.common.pagination import BoostedFeedCursorPagination, FeedCursorPagination, StandardPageNumberPagination
 from apps.common.permissions import IsAdminUser, IsOwnerOrReadOnly
+from apps.common.storage_backends import PublicMediaStorage
 from apps.common.utils import get_blocked_user_ids
 from apps.common.views import BaseAPIView, BaseModelViewSet, FeedViewSet
 
@@ -58,7 +59,7 @@ class PostViewSet(FeedViewSet):
 
     http_method_names = ["get", "post", "delete", "head", "options"]
     permission_classes = [IsAuthenticated, IsOwnerOrReadOnly]
-    pagination_class = FeedCursorPagination
+    pagination_class = BoostedFeedCursorPagination
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -108,8 +109,9 @@ class PostViewSet(FeedViewSet):
         post = self._post_service.create_post(
             author=request.user,
             text_content=data.get("text_content", ""),
-            media_files=data.get("media_files"),
+            media_keys=data.get("media_keys"),
             media_types=data.get("media_types"),
+            media_files=data.get("media_files"),
         )
 
         out = PostDetailSerializer(post, context=self.get_serializer_context())
@@ -269,8 +271,9 @@ class PrayerViewSet(FeedViewSet):
             author=request.user,
             title=data["title"],
             description=data.get("description", ""),
-            media_files=data.get("media_files"),
+            media_keys=data.get("media_keys"),
             media_types=data.get("media_types"),
+            media_files=data.get("media_files"),
         )
 
         out = PrayerDetailSerializer(prayer, context=self.get_serializer_context())
@@ -543,3 +546,42 @@ class ReportListView(BaseAPIView):
             for r in reports
         ]
         return self.success_response(data=data)
+
+
+# ---------------------------------------------------------------------------
+# MediaUploadView
+# ---------------------------------------------------------------------------
+
+
+class MediaUploadView(BaseAPIView):
+    """POST /media/upload/ -- upload files to UploadThing, return public URLs.
+
+    Accepts multipart form data with one or more ``files``.
+    Returns a list of ``{key, url}`` for each uploaded file.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request: Request) -> Response:
+        files = request.FILES.getlist("files")
+        if not files:
+            return Response(
+                {"message": "No files provided.", "data": None},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(files) > 10:
+            return Response(
+                {"message": "Maximum 10 files per upload.", "data": None},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        storage = PublicMediaStorage()
+        results = []
+        for f in files:
+            saved_key = storage.save(f"uploads/{request.user.id}/{f.name}", f)
+            results.append({
+                "key": saved_key,
+                "url": storage.url(saved_key),
+            })
+
+        return self.success_response(data=results)

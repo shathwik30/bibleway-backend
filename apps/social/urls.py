@@ -5,6 +5,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     CommentViewSet,
+    MediaUploadView,
     PostViewSet,
     PrayerViewSet,
     ReplyViewSet,
@@ -46,6 +47,8 @@ urlpatterns = [
         ReplyViewSet.as_view({"delete": "destroy"}),
         name="comment-replies-detail",
     ),
+    # Media upload
+    path("media/upload/", MediaUploadView.as_view(), name="media-upload"),
     # Reports
     path("reports/", ReportCreateView.as_view(), name="report-create"),
     path("reports/pending/", ReportListView.as_view(), name="report-list-pending"),

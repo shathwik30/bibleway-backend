@@ -1,4 +1,6 @@
+import base64
 import io
+import json
 import logging
 import mimetypes
 
@@ -13,12 +15,31 @@ from urllib3.util.retry import Retry
 logger = logging.getLogger(__name__)
 
 
+def _extract_api_key(token: str) -> str:
+    """Extract the raw API key from an UploadThing token.
+
+    UploadThing tokens can be either:
+    - A raw API key starting with ``sk_``
+    - A JWT whose payload contains ``{"apiKey": "sk_..."}``
+    """
+    if token.startswith("sk_"):
+        return token
+    try:
+        payload_b64 = token.split(".")[0]
+        payload_b64 += "=" * (4 - len(payload_b64) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+        return payload.get("apiKey", token)
+    except Exception:
+        return token
+
+
 @deconstructible
 class UploadThingStorage(Storage):
-    """Django Storage backend that uses UploadThing's REST API.
+    """Django Storage backend that uses UploadThing's v7 REST API.
 
-    Stores files via UploadThing and serves them from their CDN.
-    Uses `customId` set to the Django file name so lookups work by name.
+    Flow per file:
+      1. POST /v7/prepareUpload  →  get presigned URL + file key
+      2. PUT file bytes to the presigned URL
     """
 
     API_BASE = "https://api.uploadthing.com"
@@ -40,10 +61,9 @@ class UploadThingStorage(Storage):
             )
             adapter = HTTPAdapter(max_retries=retry)
             self._session.mount("https://", adapter)
+            api_key = _extract_api_key(settings.UPLOADTHING_TOKEN)
             self._session.headers.update(
-                {
-                    "x-uploadthing-api-key": settings.UPLOADTHING_TOKEN,
-                }
+                {"x-uploadthing-api-key": api_key}
             )
         return self._session
 
@@ -67,46 +87,32 @@ class UploadThingStorage(Storage):
         content.seek(0)
         file_bytes = content.read()
         file_size = len(file_bytes)
-
+        file_name = name.split("/")[-1]
         content_type = mimetypes.guess_type(name)[0] or "application/octet-stream"
 
-        # Step 1: Request a presigned upload URL
-        payload = {
-            "files": [
-                {
-                    "name": name.split("/")[-1],
-                    "size": file_size,
-                    "type": content_type,
-                    "customId": name,
-                }
-            ],
-            "acl": self.acl,
+        # Step 1: Prepare the upload (v7 API — one file at a time)
+        prepare_result = self._api("/v7/prepareUpload", {
+            "fileName": file_name,
+            "fileSize": file_size,
+            "fileType": content_type,
             "contentDisposition": "inline",
-        }
+            "acl": self.acl,
+        })
 
-        result = self._api("/v6/uploadFiles", payload)
-        upload_data = result["data"][0]
-        presigned_url = upload_data["url"]
-        file_key = upload_data["key"]
-        fields = upload_data.get("fields", {})
+        presigned_url = prepare_result["url"]
+        file_key = prepare_result["key"]
 
-        # Step 2: Upload the file
-        if fields:
-            # Multipart form upload
-            form_data = {k: (None, v) for k, v in fields.items()}
-            form_data["file"] = (name.split("/")[-1], io.BytesIO(file_bytes), content_type)
-            upload_resp = self.session.post(presigned_url, files=form_data)
-        else:
-            # Direct PUT upload
-            upload_resp = self.session.put(
-                presigned_url,
-                data=file_bytes,
-                headers={"Content-Type": content_type},
-            )
-
+        # Step 2: PUT the file as multipart form data to the presigned
+        # ingest URL. Use a plain request (not self.session) because
+        # the ingest server rejects the x-uploadthing-api-key header.
+        upload_resp = requests.put(
+            presigned_url,
+            files={"file": (file_name, io.BytesIO(file_bytes), content_type)},
+            timeout=120,
+        )
         upload_resp.raise_for_status()
-        logger.info("Uploaded file to UploadThing: %s -> %s", name, file_key)
 
+        logger.info("Uploaded file to UploadThing: %s -> %s", name, file_key)
         return file_key
 
     def url(self, name):
@@ -118,7 +124,7 @@ class UploadThingStorage(Storage):
         if not name:
             return
         try:
-            self._api("/v6/deleteFiles", {"fileKeys": [name]})
+            self._api("/v7/deleteFiles", {"fileKeys": [name]})
             logger.info("Deleted file from UploadThing: %s", name)
         except requests.RequestException:
             logger.exception("Failed to delete file from UploadThing: %s", name)
@@ -135,7 +141,7 @@ class UploadThingStorage(Storage):
     def size(self, name):
         try:
             result = self._api(
-                "/v6/listFiles",
+                "/v7/listFiles",
                 {"fileKeys": [name]},
             )
             files = result.get("files", [])

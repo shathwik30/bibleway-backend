@@ -7,12 +7,15 @@ from .views import (
     PostAnalyticsView,
     PostBoostCreateView,
     PostBoostListView,
+    RecordViewView,
     UserAnalyticsView,
 )
 
 app_name = "analytics"
 
 urlpatterns = [
+    # View / share recording
+    path("views/", RecordViewView.as_view(), name="record-view"),
     # Post analytics
     path(
         "posts/<uuid:post_id>/",

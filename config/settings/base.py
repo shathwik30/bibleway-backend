@@ -161,6 +161,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.analytics.tasks.deactivate_expired_boosts",
         "schedule": 300.0,  # every 5 minutes
     },
+    "generate-boost-snapshots": {
+        "task": "apps.analytics.tasks.generate_boost_snapshots",
+        "schedule": 86400.0,  # every 24 hours
+    },
 }
 
 # ── Cache ─────────────────────────────────────────────────────

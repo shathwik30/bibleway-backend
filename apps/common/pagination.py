@@ -52,3 +52,13 @@ class FeedCursorPagination(CursorPagination):
                 ),
             }
         )
+
+
+class BoostedFeedCursorPagination(FeedCursorPagination):
+    """Cursor pagination that orders by boost-aware feed_rank.
+
+    Expects the queryset to be annotated with a ``feed_rank`` DateTimeField
+    that gives boosted posts a time-shifted advantage.
+    """
+
+    ordering: str = "-feed_rank"
