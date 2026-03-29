@@ -9,6 +9,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.test
+      DJANGO_ENV: test
 
     steps:
       - uses: actions/checkout@v4
@@ -29,6 +32,4 @@ jobs:
         run: ruff check . --output-format=github
 
       - name: Run tests
-        env:
-          DJANGO_SETTINGS_MODULE: config.settings.test
         run: pytest --tb=short -q
