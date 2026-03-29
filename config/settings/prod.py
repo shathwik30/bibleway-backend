@@ -5,7 +5,7 @@ DEBUG = False
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGINS = config(  # noqa: F405
     "CORS_ALLOWED_ORIGINS",
-    default="https://bibleway.app",
+    default="https://bibleway.io",
     cast=lambda v: [s.strip() for s in v.split(",") if s.strip()],
 )
 CSRF_TRUSTED_ORIGINS = ["https://*.up.railway.app"]

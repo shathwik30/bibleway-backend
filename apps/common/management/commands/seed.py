@@ -105,19 +105,19 @@ class Command(BaseCommand):
         self.stdout.write("Seeding accounts...")
 
         user_data = [
-            {"email": "testuser@bibleway.app", "full_name": "Test User",
+            {"email": "testuser@bibleway.io", "full_name": "Test User",
              "dob": date(1995, 6, 15), "gender": "male", "country": "United States",
              "lang": "en", "bio": "A test account for development and QA."},
-            {"email": "jane@bibleway.app", "full_name": "Jane Smith",
+            {"email": "jane@bibleway.io", "full_name": "Jane Smith",
              "dob": date(1990, 3, 20), "gender": "female", "country": "Nigeria",
              "lang": "en", "bio": "Walking by faith, not by sight."},
-            {"email": "carlos@bibleway.app", "full_name": "Carlos Rivera",
+            {"email": "carlos@bibleway.io", "full_name": "Carlos Rivera",
              "dob": date(1988, 11, 5), "gender": "male", "country": "Brazil",
              "lang": "es", "bio": "Youth pastor. Bible nerd."},
-            {"email": "grace@bibleway.app", "full_name": "Grace Kim",
+            {"email": "grace@bibleway.io", "full_name": "Grace Kim",
              "dob": date(2000, 7, 12), "gender": "female", "country": "South Korea",
              "lang": "ko", "bio": "New believer hungry to learn."},
-            {"email": "admin@bibleway.app", "full_name": "Admin User",
+            {"email": "admin@bibleway.io", "full_name": "Admin User",
              "dob": date(1985, 1, 1), "gender": "male", "country": "United States",
              "lang": "en", "bio": "Platform administrator."},
         ]

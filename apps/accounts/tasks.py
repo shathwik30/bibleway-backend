@@ -34,7 +34,7 @@ def send_otp_email_task(
 
         resend.Emails.send(
             {
-                "from": "BibleWay <noreply@bibleway.app>",
+                "from": "BibleWay <noreply@bibleway.io>",
                 "to": user_email,
                 "subject": subject,
                 "html": (

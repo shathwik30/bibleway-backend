@@ -22,13 +22,13 @@ class TestValidateAppleReceipt:
     def test_success_valid_receipt(self, mock_post, settings):
         """A valid receipt with status 0 returns the full result dict."""
         settings.APPLE_SHARED_SECRET = "secret"
-        settings.APPLE_BUNDLE_ID = "com.bibleway.app"
+        settings.APPLE_BUNDLE_ID = "com.bibleway.io"
 
         mock_response = MagicMock()
         mock_response.json.return_value = {
             "status": 0,
             "receipt": {
-                "bundle_id": "com.bibleway.app",
+                "bundle_id": "com.bibleway.io",
                 "in_app": [
                     {
                         "product_id": "com.bibleway.book1",
@@ -45,7 +45,7 @@ class TestValidateAppleReceipt:
             expected_product_id="com.bibleway.book1",
         )
         assert result["status"] == 0
-        assert result["receipt"]["bundle_id"] == "com.bibleway.app"
+        assert result["receipt"]["bundle_id"] == "com.bibleway.io"
         mock_post.assert_called_once()
 
     @patch("apps.shop.validators.requests.post")
@@ -66,13 +66,13 @@ class TestValidateAppleReceipt:
     def test_wrong_product_id(self, mock_post, settings):
         """Mismatched product_id raises ValueError."""
         settings.APPLE_SHARED_SECRET = "secret"
-        settings.APPLE_BUNDLE_ID = "com.bibleway.app"
+        settings.APPLE_BUNDLE_ID = "com.bibleway.io"
 
         mock_response = MagicMock()
         mock_response.json.return_value = {
             "status": 0,
             "receipt": {
-                "bundle_id": "com.bibleway.app",
+                "bundle_id": "com.bibleway.io",
                 "in_app": [
                     {
                         "product_id": "com.bibleway.wrong_product",
@@ -94,7 +94,7 @@ class TestValidateAppleReceipt:
     def test_wrong_bundle_id(self, mock_post, settings):
         """Mismatched bundle_id raises ValueError."""
         settings.APPLE_SHARED_SECRET = "secret"
-        settings.APPLE_BUNDLE_ID = "com.bibleway.app"
+        settings.APPLE_BUNDLE_ID = "com.bibleway.io"
 
         mock_response = MagicMock()
         mock_response.json.return_value = {
@@ -114,13 +114,13 @@ class TestValidateAppleReceipt:
     def test_no_in_app_transactions(self, mock_post, settings):
         """Receipt with no in_app transactions raises ValueError when product_id expected."""
         settings.APPLE_SHARED_SECRET = "secret"
-        settings.APPLE_BUNDLE_ID = "com.bibleway.app"
+        settings.APPLE_BUNDLE_ID = "com.bibleway.io"
 
         mock_response = MagicMock()
         mock_response.json.return_value = {
             "status": 0,
             "receipt": {
-                "bundle_id": "com.bibleway.app",
+                "bundle_id": "com.bibleway.io",
                 "in_app": [],
             },
         }
@@ -160,7 +160,7 @@ class TestValidateAppleReceipt:
         valid_response = MagicMock()
         valid_response.json.return_value = {
             "status": 0,
-            "receipt": {"bundle_id": "com.bibleway.app", "in_app": []},
+            "receipt": {"bundle_id": "com.bibleway.io", "in_app": []},
         }
         valid_response.raise_for_status = MagicMock()
 
@@ -258,7 +258,7 @@ def _setup_google_mock(api_result, settings):
     """Set up Google receipt mock returning the given result dict."""
     import sys
     settings.GOOGLE_PLAY_CREDENTIALS = {"type": "service_account"}
-    settings.ANDROID_PACKAGE_NAME = "com.bibleway.app"
+    settings.ANDROID_PACKAGE_NAME = "com.bibleway.io"
 
     # Remove cached modules so they get re-created fresh
     for key in list(sys.modules.keys()):
@@ -306,7 +306,7 @@ class TestValidateGoogleReceipt:
 
     def test_missing_credentials(self, settings):
         settings.GOOGLE_PLAY_CREDENTIALS = None
-        settings.ANDROID_PACKAGE_NAME = "com.bibleway.app"
+        settings.ANDROID_PACKAGE_NAME = "com.bibleway.io"
         with pytest.raises(ValueError, match="credentials not configured"):
             validate_google_receipt("product", "token")
 

@@ -291,8 +291,8 @@ GOOGLE_OAUTH_CLIENT_IDS = [
 # ── In-App Purchase Verification ────────────────────────────────
 
 APPLE_SHARED_SECRET = config("APPLE_SHARED_SECRET", default="")
-APPLE_BUNDLE_ID = config("APPLE_BUNDLE_ID", default="com.bibleway.app")
-ANDROID_PACKAGE_NAME = config("ANDROID_PACKAGE_NAME", default="com.bibleway.app")
+APPLE_BUNDLE_ID = config("APPLE_BUNDLE_ID", default="com.bibleway.io")
+ANDROID_PACKAGE_NAME = config("ANDROID_PACKAGE_NAME", default="com.bibleway.io")
 
 def _parse_json_setting(raw: str) -> dict | None:
     if not raw or not raw.strip().startswith("{"):
