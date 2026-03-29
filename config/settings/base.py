@@ -138,24 +138,24 @@ SIMPLE_JWT = {
 # Celery, Channels) need ssl_cert_reqs=CERT_NONE because Upstash
 # does not provide a CA bundle for client verification.
 
-_REDIS_URL = config("UPSTASH_REDIS_URL", default="")
+REDIS_URL = config("UPSTASHREDIS_URL", default="")
 
-_UPSTASH_SSL_OPTS = {}
-if _REDIS_URL.startswith("rediss://"):
-    _UPSTASH_SSL_OPTS = {
+UPSTASH_SSL_OPTS = {}
+if REDIS_URL.startswith("rediss://"):
+    UPSTASH_SSL_OPTS = {
         "ssl_cert_reqs": _ssl.CERT_NONE,
     }
 
 # ── Channel Layers (Django Channels + Upstash Redis) ───────────
 
-if _REDIS_URL:
+if REDIS_URL:
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
             "CONFIG": {
                 "hosts": [{
-                    "address": _REDIS_URL,
-                    **_UPSTASH_SSL_OPTS,
+                    "address": REDIS_URL,
+                    **UPSTASH_SSL_OPTS,
                 }],
             },
         },
@@ -169,16 +169,16 @@ else:
 
 # ── Celery ──────────────────────────────────────────────────────
 
-CELERY_BROKER_URL = _REDIS_URL or "memory://"
-CELERY_RESULT_BACKEND = _REDIS_URL or "cache+memory://"
+CELERY_BROKER_URL = REDIS_URL or "memory://"
+CELERY_RESULT_BACKEND = REDIS_URL or "cache+memory://"
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "UTC"
 
-if _UPSTASH_SSL_OPTS:
-    CELERY_BROKER_USE_SSL = _UPSTASH_SSL_OPTS
-    CELERY_REDIS_BACKEND_USE_SSL = _UPSTASH_SSL_OPTS
+if UPSTASH_SSL_OPTS:
+    CELERY_BROKER_USE_SSL = UPSTASH_SSL_OPTS
+    CELERY_REDIS_BACKEND_USE_SSL = UPSTASH_SSL_OPTS
 
 CELERY_BEAT_SCHEDULE = {
     "deactivate-expired-boosts": {
@@ -193,12 +193,12 @@ CELERY_BEAT_SCHEDULE = {
 
 # ── Cache ─────────────────────────────────────────────────────
 
-if _REDIS_URL:
+if REDIS_URL:
     CACHES = {
         "default": {
             "BACKEND": "django.core.cache.backends.redis.RedisCache",
-            "LOCATION": _REDIS_URL,
-            "OPTIONS": _UPSTASH_SSL_OPTS if _UPSTASH_SSL_OPTS else {},
+            "LOCATION": REDIS_URL,
+            "OPTIONS": UPSTASH_SSL_OPTS if UPSTASH_SSL_OPTS else {},
         },
     }
 else:

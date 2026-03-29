@@ -19,9 +19,7 @@ SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 
 # Use Redis-backed sessions in production (avoids DB hits for admin sessions)
-from decouple import config as _config  # noqa: E402
-
-if _config("UPSTASH_REDIS_URL", default=""):
+if REDIS_URL:  # noqa: F405
     SESSION_ENGINE = "django.contrib.sessions.backends.cache"
     SESSION_CACHE_ALIAS = "default"
 
