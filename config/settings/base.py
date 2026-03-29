@@ -75,14 +75,15 @@ WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
 # ── Database (Neon PostgreSQL) ──────────────────────────────────
-# Neon uses PgBouncer for connection pooling on the "-pooler" endpoint.
-# conn_max_age=0 lets PgBouncer manage connection lifecycle and avoids
-# stale-connection errors from serverless cold starts.
+# Neon's "-pooler" endpoint uses PgBouncer in transaction mode.
+# conn_max_age=300 reuses Django-side connections for 5 minutes,
+# avoiding the ~800ms SSL handshake on every request.
+# conn_health_checks=True verifies the connection is alive before use.
 
 DATABASES = {
     "default": dj_database_url.parse(
         config("DATABASE_URL"),
-        conn_max_age=0,
+        conn_max_age=300,
         conn_health_checks=True,
         ssl_require=True,
     )
