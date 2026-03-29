@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-from datetime import datetime, timedelta
-from io import BytesIO
+from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
@@ -313,7 +312,7 @@ class TestGetBlockedUserIds:
         # Second call should come from cache
         with patch(
             "apps.accounts.models.BlockRelationship.objects"
-        ) as mock_manager:
+        ):
             result2 = get_blocked_user_ids(user.id)
         # Results should be the same
         assert result1 == result2

@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import io
 import uuid
 from unittest.mock import patch
 
-import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 
-from apps.social.models import PostMedia, PrayerMedia, Reaction, Report
+from apps.social.models import Reaction, Report
 from apps.social.serializers import (
     CommentCreateSerializer,
     PostCreateSerializer,

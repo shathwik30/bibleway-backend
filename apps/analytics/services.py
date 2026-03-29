@@ -7,7 +7,7 @@ from uuid import UUID
 
 from django.contrib.contenttypes.models import ContentType
 from django.db import IntegrityError, transaction
-from django.db.models import Count, QuerySet, Subquery, Sum
+from django.db.models import Count, QuerySet, Subquery
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
@@ -237,6 +237,27 @@ class PostBoostService(BaseService[PostBoost]):
             tier,
             duration_days,
         )
+
+        # Notify the post owner that their boost is live
+        try:
+            from apps.common.utils import build_notification_data
+            from apps.notifications.services import NotificationService
+
+            NotificationService().create_notification(
+                recipient_id=user_id,
+                sender_id=None,
+                notification_type="boost_live",
+                title="Your boost is live!",
+                body=f"Your post is now being promoted for {duration_days} days.",
+                data=build_notification_data("boost_live", post_id=post_id),
+            )
+        except Exception:
+            logger.warning(
+                "Failed to send boost_live notification for post=%s",
+                post_id,
+                exc_info=True,
+            )
+
         return boost
 
     def deactivate_expired_boosts(self) -> int:

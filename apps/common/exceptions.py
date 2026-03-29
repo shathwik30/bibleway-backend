@@ -38,7 +38,6 @@ def custom_exception_handler(exc, context):
     """
     import logging
 
-    from django.conf import settings
 
     logger = logging.getLogger("apps.common.exceptions")
 

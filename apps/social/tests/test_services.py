@@ -11,7 +11,6 @@ from django.core.cache import cache
 from apps.common.exceptions import BadRequestError, ForbiddenError, NotFoundError
 from apps.social.models import Comment, Post, Prayer, Reaction, Reply, Report
 from apps.social.services import (
-    COMMENTABLE_MODELS,
     REACTABLE_MODELS,
     REPORTABLE_MODELS,
     CommentService,
@@ -28,12 +27,8 @@ from apps.social.services import (
 
 from conftest import (
     BlockRelationshipFactory,
-    CommentFactory,
     PostFactory,
     PrayerFactory,
-    ReactionFactory,
-    ReplyFactory,
-    ReportFactory,
     UserFactory,
 )
 

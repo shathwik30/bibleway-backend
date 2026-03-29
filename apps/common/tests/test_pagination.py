@@ -37,7 +37,7 @@ class TestStandardPageNumberPagination:
         from conftest import PostFactory
 
         # Create enough items to fill a page
-        posts = [PostFactory(author=user) for _ in range(3)]
+        [PostFactory(author=user) for _ in range(3)]
 
         from apps.social.models import Post
 
@@ -140,7 +140,7 @@ class TestStandardPageNumberPagination:
     def test_results_matches_serialized_data(self, user):
         from conftest import PostFactory
 
-        p = PostFactory(author=user)
+        PostFactory(author=user)
 
         from apps.social.models import Post
 

@@ -5,12 +5,16 @@ Mobile clients send JWT tokens via query string: ws://host/ws/<path>/?token=<jwt
 
 from __future__ import annotations
 
+import logging
 from urllib.parse import parse_qs
 
 from channels.db import database_sync_to_async
 from channels.middleware import BaseMiddleware
 from django.contrib.auth.models import AnonymousUser
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.tokens import AccessToken
+
+logger = logging.getLogger("config.middleware")
 
 
 @database_sync_to_async
@@ -23,7 +27,11 @@ def get_user_from_token(token_str: str):
         token = AccessToken(token_str)
         user_id = token["user_id"]
         return User.objects.get(id=user_id)
-    except Exception:
+    except (InvalidToken, TokenError) as e:
+        logger.warning("WebSocket JWT validation failed: %s", e)
+        return AnonymousUser()
+    except User.DoesNotExist:
+        logger.warning("WebSocket JWT references non-existent user")
         return AnonymousUser()
 
 

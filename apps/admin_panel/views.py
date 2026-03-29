@@ -12,6 +12,7 @@ from apps.common.views import BaseAPIView
 
 from .permissions import IsAdminStaff, IsContentAdmin, IsModerationAdmin, IsSuperAdmin
 from .serializers import (
+    AdminBibleReadingStatsSerializer,
     AdminBoostRevenueSerializer,
     AdminBoostSerializer,
     AdminBoostSnapshotSerializer,
@@ -28,6 +29,8 @@ from .serializers import (
     AdminCreateAdminSerializer,
     AdminDemographicsSerializer,
     AdminLogSerializer,
+    AdminPageCommentSerializer,
+    AdminPageLikeStatsSerializer,
     AdminPageCreateSerializer,
     AdminPageSerializer,
     AdminPageUpdateSerializer,
@@ -1149,6 +1152,77 @@ class AdminBoostPerformanceView(BaseAPIView):
         data: dict[str, Any] = self.service.get_boost_performance()
         serializer = AdminBoostRevenueSerializer(data)
         return self.success_response(data=serializer.data, message="Boost performance retrieved")
+
+
+class AdminBibleReadingStatsView(BaseAPIView):
+    """Return Bible reading view statistics."""
+
+    permission_classes: list[type[BasePermission]] = [IsAdminStaff]
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.service = AdminAnalyticsService()
+
+    def get(self, request: Request) -> Response:
+        data: dict[str, Any] = self.service.get_bible_reading_stats()
+        serializer = AdminBibleReadingStatsSerializer(data)
+        return self.success_response(data=serializer.data, message="Bible reading stats retrieved")
+
+
+class AdminPageCommentListView(BaseAPIView):
+    """List user comments on Bible pages. Filterable by page_id."""
+
+    permission_classes: list[type[BasePermission]] = [IsContentAdmin]
+    pagination_class = StandardPageNumberPagination
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.service = AdminBibleService()
+
+    def get(self, request: Request) -> Response:
+        page_id_str: str | None = request.query_params.get("page_id")
+        page_id: UUID | None = None
+        if page_id_str:
+            try:
+                page_id = UUID(page_id_str)
+            except ValueError:
+                from apps.common.exceptions import BadRequestError
+                raise BadRequestError(detail="Invalid page_id UUID.")
+
+        queryset = self.service.list_page_comments(page_id=page_id)
+        return self.paginated_response(queryset, AdminPageCommentSerializer, request)
+
+
+class AdminPageCommentDeleteView(BaseAPIView):
+    """Delete a specific Bible page comment."""
+
+    permission_classes: list[type[BasePermission]] = [IsContentAdmin]
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.service = AdminBibleService()
+
+    def delete(self, request: Request, comment_id: UUID) -> Response:
+        self.service.delete_page_comment(
+            admin_user=request.user,
+            comment_id=comment_id,
+        )
+        return self.no_content_response()
+
+
+class AdminPageLikeStatsView(BaseAPIView):
+    """Return like counts per Bible page."""
+
+    permission_classes: list[type[BasePermission]] = [IsContentAdmin]
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.service = AdminBibleService()
+
+    def get(self, request: Request) -> Response:
+        data: list[dict[str, Any]] = self.service.get_page_like_stats()
+        serializer = AdminPageLikeStatsSerializer(data, many=True)
+        return self.success_response(data=serializer.data, message="Page like stats retrieved")
 
 
 # ---------------------------------------------------------------------------

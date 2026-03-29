@@ -19,6 +19,8 @@ from apps.verse_of_day.services import VerseOfDayService
 @pytest.mark.django_db
 class TestGetTodayVerse:
     def setup_method(self):
+        from django.core.cache import cache
+        cache.clear()
         self.service = VerseOfDayService()
 
     def test_returns_scheduled_verse(self):
@@ -79,6 +81,8 @@ class TestGetTodayVerse:
 @pytest.mark.django_db
 class TestGetVerseByDate:
     def setup_method(self):
+        from django.core.cache import cache
+        cache.clear()
         self.service = VerseOfDayService()
 
     def test_returns_scheduled_for_specific_date(self):

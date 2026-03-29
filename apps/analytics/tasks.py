@@ -4,7 +4,6 @@ import logging
 
 from celery import shared_task
 from django.contrib.contenttypes.models import ContentType
-from django.db.models import Count
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -48,13 +47,6 @@ def generate_boost_snapshots(self):
 
         snapshots_created = 0
         for boost in active_boosts:
-            # Skip if snapshot already exists for today
-            if BoostAnalyticSnapshot.objects.filter(
-                boost=boost, snapshot_date=today
-            ).exists():
-                continue
-
-            # Count views on the boosted post for today
             daily_views = PostView.objects.filter(
                 content_type=post_ct,
                 object_id=boost.post_id,
@@ -65,7 +57,6 @@ def generate_boost_snapshots(self):
                 viewer__isnull=False,
             ).values("viewer_id").distinct().count()
 
-            # Calculate engagement rate (reactions + comments / impressions)
             post = boost.post
             daily_reactions = 0
             daily_comments = 0
@@ -84,16 +75,19 @@ def generate_boost_snapshots(self):
                     ((daily_reactions + daily_comments) / impressions) * 100, 2
                 )
 
-            BoostAnalyticSnapshot.objects.create(
+            _, created = BoostAnalyticSnapshot.objects.get_or_create(
                 boost=boost,
-                impressions=impressions,
-                reach=reach,
-                engagement_rate=engagement_rate,
-                link_clicks=0,
-                profile_visits=0,
                 snapshot_date=today,
+                defaults={
+                    "impressions": impressions,
+                    "reach": reach,
+                    "engagement_rate": engagement_rate,
+                    "link_clicks": 0,
+                    "profile_visits": 0,
+                },
             )
-            snapshots_created += 1
+            if created:
+                snapshots_created += 1
 
         logger.info(
             "Generated %d boost snapshots for %s.", snapshots_created, today

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
 
 from rest_framework import serializers
 
@@ -76,7 +75,7 @@ class ProductDetailSerializer(BaseTimestampedSerializer):
 
         if obj.is_free:
             # Point to the download endpoint rather than exposing the raw file URL
-            return request.build_absolute_uri(f"/api/shop/downloads/{obj.pk}/")
+            return request.build_absolute_uri(f"/api/v1/shop/downloads/{obj.pk}/")
 
         has_purchased = Purchase.objects.filter(
             user=request.user,
@@ -84,7 +83,7 @@ class ProductDetailSerializer(BaseTimestampedSerializer):
             is_validated=True,
         ).exists()
         if has_purchased:
-            return request.build_absolute_uri(f"/api/shop/downloads/{obj.pk}/")
+            return request.build_absolute_uri(f"/api/v1/shop/downloads/{obj.pk}/")
         return None
 
 

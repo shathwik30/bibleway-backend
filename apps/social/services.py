@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import Any
 from uuid import UUID
 
 from django.contrib.contenttypes.models import ContentType
@@ -22,10 +21,14 @@ from django.db.models import (
 )
 from django.db.models.functions import Coalesce
 
+import logging
+
 from apps.accounts.models import User
 from apps.common.exceptions import BadRequestError, ForbiddenError, NotFoundError
 from apps.common.services import BaseService
-from apps.common.utils import get_blocked_user_ids
+from apps.common.utils import build_notification_data, get_blocked_user_ids
+
+logger = logging.getLogger(__name__)
 
 from .models import (
     Comment,
@@ -74,7 +77,11 @@ def _resolve_content_type(model_name: str, allowed: set[str]) -> ContentType:
 def _validate_object_exists(content_type: ContentType, object_id: UUID) -> None:
     """Verify the target object actually exists."""
     model_class = content_type.model_class()
-    if model_class is None or not model_class.objects.filter(pk=object_id).exists():
+    if model_class is None:
+        raise NotFoundError(
+            detail=f"Unknown content type '{content_type.model}'."
+        )
+    if not model_class.objects.filter(pk=object_id).exists():
         raise NotFoundError(
             detail=f"{content_type.model.capitalize()} with id '{object_id}' not found."
         )
@@ -486,12 +493,14 @@ class ReactionService:
         )
 
         if existing is None:
-            return Reaction.objects.create(
+            reaction = Reaction.objects.create(
                 user=user,
                 content_type=ct,
                 object_id=object_id,
                 emoji_type=emoji_type,
             )
+            _send_reaction_notification(user, content_type_model, object_id, ct)
+            return reaction
 
         if existing.emoji_type == emoji_type:
             existing.delete()
@@ -595,6 +604,7 @@ class CommentService(BaseService[Comment]):
             object_id=object_id,
             text=text,
         )
+        _send_comment_notification(user, content_type_model, object_id, ct, text)
         return self.get_by_id(comment.pk)
 
     def list_comments_for_content(
@@ -638,7 +648,7 @@ class ReplyService(BaseService[Reply]):
     ) -> Reply:
         """Add a reply to a comment."""
         try:
-            comment = Comment.objects.select_related("content_type").get(pk=comment_id)
+            comment = Comment.objects.select_related("content_type", "user").get(pk=comment_id)
         except Comment.DoesNotExist:
             raise NotFoundError(
                 detail=f"Comment with id '{comment_id}' not found."
@@ -652,6 +662,7 @@ class ReplyService(BaseService[Reply]):
             comment_id=comment_id,
             text=text,
         )
+        _send_reply_notification(user, comment, text)
         return self.get_by_id(reply.pk)
 
     def list_replies_for_comment(
@@ -733,3 +744,82 @@ class ReportService(BaseService[Report]):
             .filter(status=Report.Status.PENDING)
             .select_related("content_type")
         )
+
+
+# ---------------------------------------------------------------------------
+# Notification helpers (fire-and-forget, never block the main action)
+# ---------------------------------------------------------------------------
+
+
+def _send_reaction_notification(
+    user: User, content_type_model: str, object_id: UUID, ct: ContentType
+) -> None:
+    """Notify the content author when someone reacts to their post/prayer."""
+    try:
+        author_id = _get_content_author_id(ct, object_id)
+        if author_id is None or author_id == user.id:
+            return
+        from apps.notifications.services import NotificationService
+
+        data_key = "post_id" if content_type_model == "post" else "prayer_id"
+        NotificationService().create_notification(
+            recipient_id=author_id,
+            sender_id=user.id,
+            notification_type="reaction",
+            title=f"{user.full_name} reacted to your {content_type_model}",
+            body=f"{user.full_name} reacted to your {content_type_model}.",
+            data=build_notification_data("reaction", **{data_key: object_id}),
+        )
+    except Exception:
+        logger.warning("Failed to send reaction notification", exc_info=True)
+
+
+def _send_comment_notification(
+    user: User, content_type_model: str, object_id: UUID, ct: ContentType, text: str
+) -> None:
+    """Notify the content author when someone comments on their post/prayer."""
+    try:
+        author_id = _get_content_author_id(ct, object_id)
+        if author_id is None or author_id == user.id:
+            return
+        from apps.notifications.services import NotificationService
+
+        ntype = "prayer_comment" if content_type_model == "prayer" else "comment"
+        data_key = "post_id" if content_type_model == "post" else "prayer_id"
+        preview = text[:80] if text else ""
+        NotificationService().create_notification(
+            recipient_id=author_id,
+            sender_id=user.id,
+            notification_type=ntype,
+            title=f"{user.full_name} commented on your {content_type_model}",
+            body=preview,
+            data=build_notification_data(ntype, **{data_key: object_id}),
+        )
+    except Exception:
+        logger.warning("Failed to send comment notification", exc_info=True)
+
+
+def _send_reply_notification(user: User, comment: Comment, text: str) -> None:
+    """Notify the comment author when someone replies to their comment."""
+    try:
+        if comment.user_id == user.id:
+            return
+        from apps.notifications.services import NotificationService
+
+        data = build_notification_data("reply")
+        if comment.content_type.model == "post":
+            data["post_id"] = str(comment.object_id)
+        elif comment.content_type.model == "prayer":
+            data["prayer_id"] = str(comment.object_id)
+
+        preview = text[:80] if text else ""
+        NotificationService().create_notification(
+            recipient_id=comment.user_id,
+            sender_id=user.id,
+            notification_type="reply",
+            title=f"{user.full_name} replied to your comment",
+            body=preview,
+            data=data,
+        )
+    except Exception:
+        logger.warning("Failed to send reply notification", exc_info=True)

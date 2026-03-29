@@ -130,6 +130,10 @@ def _page_detail_url(page_id):
     return f"/api/v1/bible/pages/{page_id}/"
 
 
+def _page_comments_url(page_id):
+    return f"/api/v1/bible/pages/{page_id}/comments/"
+
+
 # ──────────────────────────────────────────────────────────────
 # GET /api/v1/bible/sections/  (SegregatedSectionListView)
 # ──────────────────────────────────────────────────────────────
@@ -341,9 +345,57 @@ class TestPageDetailView:
         assert data["content"] == page.content
 
 
-# ──────────────────────────────────────────────────────────────
-# GET /api/v1/bible/search/?q=  (BibleSearchView)
-# ──────────────────────────────────────────────────────────────
+@pytest.mark.django_db
+class TestPageCommentCreateView:
+    """POST /api/v1/bible/pages/<page_id>/comments/"""
+
+    def test_create_comment_success(self, auth_client, page):
+        response = auth_client.post(
+            _page_comments_url(page.id),
+            {"content": "Great lesson!"},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+        from apps.bible.models import SegregatedPageComment
+        assert SegregatedPageComment.objects.filter(page=page).count() == 1
+
+    def test_create_comment_missing_content(self, auth_client, page):
+        response = auth_client.post(
+            _page_comments_url(page.id), {}, format="json"
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_create_comment_empty_content(self, auth_client, page):
+        response = auth_client.post(
+            _page_comments_url(page.id),
+            {"content": ""},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_create_comment_too_long(self, auth_client, page):
+        response = auth_client.post(
+            _page_comments_url(page.id),
+            {"content": "x" * 1001},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_create_comment_nonexistent_page(self, auth_client):
+        response = auth_client.post(
+            _page_comments_url(uuid.uuid4()),
+            {"content": "Hello"},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_create_comment_unauthenticated(self, api_client, page):
+        response = api_client.post(
+            _page_comments_url(page.id),
+            {"content": "Hello"},
+            format="json",
+        )
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
 @pytest.mark.django_db

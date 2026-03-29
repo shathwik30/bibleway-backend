@@ -108,11 +108,13 @@ def get_blocked_user_ids(user_id) -> set:
     return result
 
 
-def invalidate_blocked_user_cache(user_id) -> None:
-    """Invalidate the blocked-user cache for a given user.
+def invalidate_blocked_user_cache(user_id, other_user_id=None) -> None:
+    """Invalidate the blocked-user cache for both sides of a block relationship.
 
     Call this from BlockRelationship signals on create/delete.
     """
     from django.core.cache import cache
 
     cache.delete(f"blocked_user_ids:{user_id}")
+    if other_user_id is not None:
+        cache.delete(f"blocked_user_ids:{other_user_id}")

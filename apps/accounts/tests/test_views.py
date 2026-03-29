@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import datetime
 from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
-from django.test.utils import override_settings
 from rest_framework import status
-from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.accounts.models import (
@@ -26,11 +23,8 @@ from conftest import (
 )
 
 
-# ────────────────────────────────────────────────────────────────
-# URL helpers (avoid module-level reverse() which triggers debug_toolbar import)
-# ────────────────────────────────────────────────────────────────
-
 REGISTER_URL = "/api/v1/accounts/register/"
+GOOGLE_AUTH_URL = "/api/v1/accounts/google-auth/"
 LOGIN_URL = "/api/v1/accounts/login/"
 LOGOUT_URL = "/api/v1/accounts/logout/"
 TOKEN_REFRESH_URL = "/api/v1/accounts/token/refresh/"
@@ -41,32 +35,26 @@ PASSWORD_RESET_CONFIRM_URL = "/api/v1/accounts/password-reset/confirm/"
 CHANGE_PASSWORD_URL = "/api/v1/accounts/change-password/"
 PROFILE_URL = "/api/v1/accounts/profile/"
 USER_SEARCH_URL = "/api/v1/accounts/users/search/"
-FOLLOW_REQUESTS_URL = "/api/v1/accounts/follow-requests/"
 BLOCKED_USERS_URL = "/api/v1/accounts/blocked-users/"
-PRIVACY_URL = "/api/v1/accounts/privacy/"
 
 
-def user_detail_url(user_id):
+def user_detail_url(user_id: object) -> str:
     return f"/api/v1/accounts/users/{user_id}/"
 
 
-def follow_url(user_id):
+def follow_url(user_id: object) -> str:
     return f"/api/v1/accounts/users/{user_id}/follow/"
 
 
-def followers_url(user_id):
+def followers_url(user_id: object) -> str:
     return f"/api/v1/accounts/users/{user_id}/followers/"
 
 
-def following_url(user_id):
+def following_url(user_id: object) -> str:
     return f"/api/v1/accounts/users/{user_id}/following/"
 
 
-def follow_request_url(user_id):
-    return f"/api/v1/accounts/follow-requests/{user_id}/"
-
-
-def block_url(user_id):
+def block_url(user_id: object) -> str:
     return f"/api/v1/accounts/users/{user_id}/block/"
 
 
@@ -80,21 +68,14 @@ VALID_REGISTRATION_DATA = {
 }
 
 
-def _get_results(response):
+def _get_results(response: object) -> list:
     """Extract results list from a paginated or non-paginated response."""
     data = response.data
-    # Paginated: {"message": "...", "data": {"count": N, "results": [...]}}
     if isinstance(data, dict) and "data" in data and isinstance(data["data"], dict):
         return data["data"].get("results", [])
-    # Non-paginated: {"message": "...", "data": [...]}
     if isinstance(data, dict) and "data" in data and isinstance(data["data"], list):
         return data["data"]
     return []
-
-
-# ────────────────────────────────────────────────────────────────
-# Disable per-view throttling for all tests in this module
-# ────────────────────────────────────────────────────────────────
 
 
 @pytest.fixture(autouse=True)
@@ -108,16 +89,11 @@ def _disable_throttling():
         yield
 
 
-# ────────────────────────────────────────────────────────────────
-# Registration
-# ────────────────────────────────────────────────────────────────
-
-
 @pytest.mark.django_db
 class TestRegistrationView:
     """POST /api/v1/accounts/register/"""
 
-    @patch("apps.accounts.services.UserService._send_otp_email")
+    @patch("apps.accounts.services._dispatch_otp_email")
     def test_register_success(self, mock_send, api_client):
         response = api_client.post(REGISTER_URL, VALID_REGISTRATION_DATA, format="json")
         assert response.status_code == status.HTTP_201_CREATED
@@ -126,13 +102,13 @@ class TestRegistrationView:
         assert User.objects.filter(email="newuser@example.com").exists()
         mock_send.assert_called_once()
 
-    @patch("apps.accounts.services.UserService._send_otp_email")
+    @patch("apps.accounts.services._dispatch_otp_email")
     def test_register_creates_otp(self, mock_send, api_client):
         api_client.post(REGISTER_URL, VALID_REGISTRATION_DATA, format="json")
         user = User.objects.get(email="newuser@example.com")
         assert OTPToken.objects.filter(user=user, purpose="register").exists()
 
-    @patch("apps.accounts.services.UserService._send_otp_email")
+    @patch("apps.accounts.services._dispatch_otp_email")
     def test_register_duplicate_email(self, mock_send, api_client):
         UserFactory(email="newuser@example.com")
         response = api_client.post(REGISTER_URL, VALID_REGISTRATION_DATA, format="json")
@@ -177,18 +153,27 @@ class TestRegistrationView:
         response = api_client.post(REGISTER_URL, data, format="json")
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-    @patch("apps.accounts.services.UserService._send_otp_email")
+    @patch("apps.accounts.services._dispatch_otp_email")
     def test_register_email_lowered(self, mock_send, api_client):
         data = {**VALID_REGISTRATION_DATA, "email": "UPPER@EXAMPLE.COM"}
         response = api_client.post(REGISTER_URL, data, format="json")
         assert response.status_code == status.HTTP_201_CREATED
-        # The serializer lower()+strip()s the email
         assert User.objects.filter(email__icontains="upper@example.com").exists()
 
+    def test_register_future_date_of_birth(self, api_client):
+        data = {**VALID_REGISTRATION_DATA, "date_of_birth": "2099-01-01"}
+        response = api_client.post(REGISTER_URL, data, format="json")
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-# ────────────────────────────────────────────────────────────────
-# Login
-# ────────────────────────────────────────────────────────────────
+    def test_register_underage(self, api_client):
+        data = {**VALID_REGISTRATION_DATA, "date_of_birth": "2020-01-01"}
+        response = api_client.post(REGISTER_URL, data, format="json")
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_register_invalid_language(self, api_client):
+        data = {**VALID_REGISTRATION_DATA, "preferred_language": "zz"}
+        response = api_client.post(REGISTER_URL, data, format="json")
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
 
 
 @pytest.mark.django_db
@@ -245,9 +230,136 @@ class TestLoginView:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
 
-# ────────────────────────────────────────────────────────────────
-# Logout
-# ────────────────────────────────────────────────────────────────
+MOCK_GOOGLE_INFO: dict = {
+    "iss": "accounts.google.com",
+    "aud": "test-google-client-id.apps.googleusercontent.com",
+    "email": "googleuser@gmail.com",
+    "email_verified": True,
+    "name": "Google User",
+    "picture": "https://lh3.googleusercontent.com/photo.jpg",
+    "sub": "1234567890",
+}
+
+
+@pytest.mark.django_db
+class TestGoogleAuthView:
+    """POST /api/v1/accounts/google-auth/"""
+
+    @patch("google.oauth2.id_token.verify_oauth2_token")
+    def test_google_login_existing_user(self, mock_verify, api_client):
+        user = UserFactory(email="googleuser@gmail.com")
+        mock_verify.return_value = MOCK_GOOGLE_INFO
+        response = api_client.post(
+            GOOGLE_AUTH_URL, {"id_token": "valid-token"}, format="json"
+        )
+        assert response.status_code == status.HTTP_200_OK
+        data = response.data["data"]
+        assert data["is_new_user"] is False
+        assert "access" in data
+        assert "refresh" in data
+        assert data["user_id"] == str(user.id)
+
+    @patch("google.oauth2.id_token.verify_oauth2_token")
+    def test_google_new_user_missing_fields_returns_202(self, mock_verify, api_client):
+        mock_verify.return_value = MOCK_GOOGLE_INFO
+        response = api_client.post(
+            GOOGLE_AUTH_URL, {"id_token": "valid-token"}, format="json"
+        )
+        assert response.status_code == status.HTTP_202_ACCEPTED
+        data = response.data["data"]
+        assert data["is_new_user"] is True
+        assert data["google_user"]["email"] == "googleuser@gmail.com"
+        assert data["google_user"]["full_name"] == "Google User"
+
+    @patch("google.oauth2.id_token.verify_oauth2_token")
+    def test_google_new_user_with_all_fields_creates_user(self, mock_verify, api_client):
+        mock_verify.return_value = MOCK_GOOGLE_INFO
+        response = api_client.post(
+            GOOGLE_AUTH_URL,
+            {
+                "id_token": "valid-token",
+                "date_of_birth": "1995-06-15",
+                "gender": "male",
+                "country": "US",
+            },
+            format="json",
+        )
+        assert response.status_code == status.HTTP_200_OK
+        data = response.data["data"]
+        assert data["is_new_user"] is False
+        assert "access" in data
+        assert User.objects.filter(email="googleuser@gmail.com").exists()
+        user = User.objects.get(email="googleuser@gmail.com")
+        assert user.is_email_verified is True
+        assert user.full_name == "Google User"
+        assert user.has_usable_password() is False
+
+    @patch("google.oauth2.id_token.verify_oauth2_token")
+    def test_google_invalid_token(self, mock_verify, api_client):
+        mock_verify.side_effect = ValueError("Invalid token")
+        response = api_client.post(
+            GOOGLE_AUTH_URL, {"id_token": "bad-token"}, format="json"
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "Invalid Google ID token" in response.data["message"]
+
+    @patch("google.oauth2.id_token.verify_oauth2_token")
+    def test_google_wrong_audience_rejected(self, mock_verify, api_client):
+        info = {**MOCK_GOOGLE_INFO, "aud": "wrong-client-id"}
+        mock_verify.return_value = info
+        response = api_client.post(
+            GOOGLE_AUTH_URL, {"id_token": "valid-token"}, format="json"
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "audience" in response.data["message"]
+
+    @patch("google.oauth2.id_token.verify_oauth2_token")
+    def test_google_unverified_email_rejected(self, mock_verify, api_client):
+        info = {**MOCK_GOOGLE_INFO, "email_verified": False}
+        mock_verify.return_value = info
+        response = api_client.post(
+            GOOGLE_AUTH_URL, {"id_token": "valid-token"}, format="json"
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "not verified" in response.data["message"]
+
+    @patch("google.oauth2.id_token.verify_oauth2_token")
+    def test_google_deactivated_user_forbidden(self, mock_verify, api_client):
+        UserFactory(email="googleuser@gmail.com", is_active=False)
+        mock_verify.return_value = MOCK_GOOGLE_INFO
+        response = api_client.post(
+            GOOGLE_AUTH_URL, {"id_token": "valid-token"}, format="json"
+        )
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+    @patch("google.oauth2.id_token.verify_oauth2_token")
+    def test_google_duplicate_email_conflict(self, mock_verify, api_client):
+        UserFactory(email="googleuser@gmail.com")
+        mock_verify.return_value = MOCK_GOOGLE_INFO
+        response = api_client.post(
+            GOOGLE_AUTH_URL, {"id_token": "valid-token"}, format="json"
+        )
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["data"]["is_new_user"] is False
+
+    def test_google_auth_missing_token(self, api_client):
+        response = api_client.post(GOOGLE_AUTH_URL, {}, format="json")
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    @patch("google.oauth2.id_token.verify_oauth2_token")
+    def test_google_new_user_validates_dob(self, mock_verify, api_client):
+        mock_verify.return_value = MOCK_GOOGLE_INFO
+        response = api_client.post(
+            GOOGLE_AUTH_URL,
+            {
+                "id_token": "valid-token",
+                "date_of_birth": "2020-01-01",
+                "gender": "male",
+                "country": "US",
+            },
+            format="json",
+        )
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
 
 
 @pytest.mark.django_db
@@ -283,16 +395,10 @@ class TestLogoutView:
         refresh = RefreshToken.for_user(user)
         auth_client.post(LOGOUT_URL, {"refresh": str(refresh)}, format="json")
 
-        # Using the same token again should fail
         response = auth_client.post(
             LOGOUT_URL, {"refresh": str(refresh)}, format="json"
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-
-
-# ────────────────────────────────────────────────────────────────
-# Token Refresh
-# ────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -319,11 +425,6 @@ class TestTokenRefreshView:
             TOKEN_REFRESH_URL, {"refresh": "invalid-token"}, format="json"
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-
-
-# ────────────────────────────────────────────────────────────────
-# Email Verification
-# ────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -388,16 +489,11 @@ class TestEmailVerificationView:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
 
-# ────────────────────────────────────────────────────────────────
-# Resend OTP
-# ────────────────────────────────────────────────────────────────
-
-
 @pytest.mark.django_db
 class TestResendOTPView:
     """POST /api/v1/accounts/auth/resend-otp/"""
 
-    @patch("apps.accounts.services.UserService._send_otp_email")
+    @patch("apps.accounts.services._dispatch_otp_email")
     def test_resend_otp_unverified_user(self, mock_send, api_client):
         user = UserFactory(is_email_verified=False)
         response = api_client.post(
@@ -406,17 +502,16 @@ class TestResendOTPView:
         assert response.status_code == status.HTTP_200_OK
         mock_send.assert_called_once()
 
-    @patch("apps.accounts.services.UserService._send_otp_email")
+    @patch("apps.accounts.services._dispatch_otp_email")
     def test_resend_otp_verified_user_silent(self, mock_send, api_client):
         user = UserFactory(is_email_verified=True)
         response = api_client.post(
             RESEND_OTP_URL, {"email": user.email}, format="json"
         )
-        # Should return 200 to prevent user enumeration
         assert response.status_code == status.HTTP_200_OK
         mock_send.assert_not_called()
 
-    @patch("apps.accounts.services.UserService._send_otp_email")
+    @patch("apps.accounts.services._dispatch_otp_email")
     def test_resend_otp_nonexistent_email_silent(self, mock_send, api_client):
         response = api_client.post(
             RESEND_OTP_URL, {"email": "ghost@example.com"}, format="json"
@@ -424,17 +519,21 @@ class TestResendOTPView:
         assert response.status_code == status.HTTP_200_OK
         mock_send.assert_not_called()
 
-
-# ────────────────────────────────────────────────────────────────
-# Password Reset Request
-# ────────────────────────────────────────────────────────────────
+    @patch("apps.accounts.services._dispatch_otp_email")
+    def test_resend_otp_inactive_user_silent(self, mock_send, api_client):
+        user = UserFactory(is_active=False, is_email_verified=False)
+        response = api_client.post(
+            RESEND_OTP_URL, {"email": user.email}, format="json"
+        )
+        assert response.status_code == status.HTTP_200_OK
+        mock_send.assert_not_called()
 
 
 @pytest.mark.django_db
 class TestPasswordResetRequestView:
     """POST /api/v1/accounts/password-reset/"""
 
-    @patch("apps.accounts.services.UserService._send_otp_email")
+    @patch("apps.accounts.services._dispatch_otp_email")
     def test_request_password_reset_success(self, mock_send, api_client):
         user = UserFactory(is_email_verified=True)
         response = api_client.post(
@@ -444,12 +543,11 @@ class TestPasswordResetRequestView:
         assert "reset code has been sent" in response.data["message"]
         mock_send.assert_called_once()
 
-    @patch("apps.accounts.services.UserService._send_otp_email")
+    @patch("apps.accounts.services._dispatch_otp_email")
     def test_request_password_reset_nonexistent_email(self, mock_send, api_client):
         response = api_client.post(
             PASSWORD_RESET_URL, {"email": "ghost@example.com"}, format="json"
         )
-        # Should return 200 to prevent enumeration
         assert response.status_code == status.HTTP_200_OK
         mock_send.assert_not_called()
 
@@ -458,11 +556,6 @@ class TestPasswordResetRequestView:
             PASSWORD_RESET_URL, {"email": "not-an-email"}, format="json"
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-
-
-# ────────────────────────────────────────────────────────────────
-# Password Reset Confirm
-# ────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -532,11 +625,6 @@ class TestPasswordResetConfirmView:
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
-# ────────────────────────────────────────────────────────────────
-# Change Password
-# ────────────────────────────────────────────────────────────────
-
-
 @pytest.mark.django_db
 class TestChangePasswordView:
     """POST /api/v1/accounts/change-password/"""
@@ -581,11 +669,6 @@ class TestChangePasswordView:
     def test_change_password_missing_fields(self, auth_client):
         response = auth_client.post(CHANGE_PASSWORD_URL, {}, format="json")
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-
-
-# ────────────────────────────────────────────────────────────────
-# Profile (GET/PUT/PATCH)
-# ────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -663,7 +746,6 @@ class TestProfileView:
             format="json",
         )
         assert response.status_code == status.HTTP_200_OK
-        # Email should not change
         assert response.data["data"]["email"] == original_email
 
     def test_patch_profile_no_valid_fields(self, auth_client):
@@ -671,11 +753,6 @@ class TestProfileView:
             PROFILE_URL, {"email": "newemail@test.com"}, format="json"
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-
-
-# ────────────────────────────────────────────────────────────────
-# User Detail (viewing another user's profile)
-# ────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -686,6 +763,25 @@ class TestUserDetailView:
         response = auth_client.get(user_detail_url(user2.id))
         assert response.status_code == status.HTTP_200_OK
         assert response.data["data"]["id"] == str(user2.id)
+
+    def test_view_other_user_hides_pii(self, auth_client, user2):
+        response = auth_client.get(user_detail_url(user2.id))
+        assert response.status_code == status.HTTP_200_OK
+        data = response.data["data"]
+        assert "email" not in data
+        assert "phone_number" not in data
+        assert "date_of_birth" not in data
+        assert "is_email_verified" not in data
+        assert "full_name" in data
+        assert "bio" in data
+
+    def test_view_own_profile_shows_pii(self, auth_client, user):
+        response = auth_client.get(user_detail_url(user.id))
+        assert response.status_code == status.HTTP_200_OK
+        data = response.data["data"]
+        assert "email" in data
+        assert "date_of_birth" in data
+        assert "is_email_verified" in data
 
     def test_view_nonexistent_user(self, auth_client):
         response = auth_client.get(user_detail_url(uuid4()))
@@ -701,14 +797,22 @@ class TestUserDetailView:
         response = auth_client.get(user_detail_url(user2.id))
         assert response.status_code == status.HTTP_403_FORBIDDEN
 
+    def test_view_other_user_follow_status_none(self, auth_client, user2):
+        response = auth_client.get(user_detail_url(user2.id))
+        assert response.data["data"]["follow_status"] == "none"
+
+    def test_view_other_user_follow_status_following(self, auth_client, user, user2):
+        FollowRelationshipFactory(follower=user, following=user2)
+        response = auth_client.get(user_detail_url(user2.id))
+        assert response.data["data"]["follow_status"] == "following"
+
+    def test_view_own_profile_follow_status_self(self, auth_client, user):
+        response = auth_client.get(user_detail_url(user.id))
+        assert response.data["data"]["follow_status"] == "self"
+
     def test_view_unauthenticated(self, api_client, user):
         response = api_client.get(user_detail_url(user.id))
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
-
-
-# ────────────────────────────────────────────────────────────────
-# User Search
-# ────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -731,7 +835,6 @@ class TestUserSearchView:
         response = auth_client.get(USER_SEARCH_URL, {"q": "", "country": "US"})
         assert response.status_code == status.HTTP_200_OK
         results = _get_results(response)
-        # May include the auth user if they are from US
         us_results = [r for r in results if r.get("full_name") == "US Person"]
         assert len(us_results) == 1
 
@@ -765,27 +868,14 @@ class TestUserSearchView:
         assert len(results) == 0
 
 
-# ────────────────────────────────────────────────────────────────
-# Follow / Unfollow
-# ────────────────────────────────────────────────────────────────
-
-
 @pytest.mark.django_db
 class TestFollowView:
     """POST/DELETE /api/v1/accounts/users/<user_id>/follow/"""
 
-    def test_follow_public_user(self, auth_client, user2):
+    def test_follow_user(self, auth_client, user2):
         response = auth_client.post(follow_url(user2.id))
         assert response.status_code == status.HTTP_201_CREATED
         assert "Followed successfully" in response.data["message"]
-        assert response.data["data"]["status"] == "accepted"
-
-    def test_follow_private_user_pending(self, auth_client):
-        private_user = UserFactory(account_visibility="private")
-        response = auth_client.post(follow_url(private_user.id))
-        assert response.status_code == status.HTTP_201_CREATED
-        assert "Follow request sent" in response.data["message"]
-        assert response.data["data"]["status"] == "pending"
 
     def test_follow_self_rejected(self, auth_client, user):
         response = auth_client.post(follow_url(user.id))
@@ -807,7 +897,7 @@ class TestFollowView:
         assert response.status_code == status.HTTP_403_FORBIDDEN
 
     def test_unfollow_success(self, auth_client, user, user2):
-        FollowRelationshipFactory(follower=user, following=user2, status="accepted")
+        FollowRelationshipFactory(follower=user, following=user2)
         response = auth_client.delete(follow_url(user2.id))
         assert response.status_code == status.HTTP_204_NO_CONTENT
         assert not FollowRelationship.objects.filter(
@@ -823,81 +913,6 @@ class TestFollowView:
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
-# ────────────────────────────────────────────────────────────────
-# Follow Requests (Accept / Reject)
-# ────────────────────────────────────────────────────────────────
-
-
-@pytest.mark.django_db
-class TestFollowRequestView:
-    """POST/DELETE /api/v1/accounts/follow-requests/<user_id>/"""
-
-    def test_accept_follow_request(self, auth_client, user, user2):
-        FollowRelationshipFactory(follower=user2, following=user, status="pending")
-
-        response = auth_client.post(follow_request_url(user2.id))
-        assert response.status_code == status.HTTP_200_OK
-        assert "Follow request accepted" in response.data["message"]
-        assert response.data["data"]["status"] == "accepted"
-
-    def test_accept_nonexistent_request(self, auth_client):
-        response = auth_client.post(follow_request_url(uuid4()))
-        assert response.status_code == status.HTTP_404_NOT_FOUND
-
-    def test_reject_follow_request(self, auth_client, user, user2):
-        FollowRelationshipFactory(follower=user2, following=user, status="pending")
-
-        response = auth_client.delete(follow_request_url(user2.id))
-        assert response.status_code == status.HTTP_204_NO_CONTENT
-        assert not FollowRelationship.objects.filter(
-            follower=user2, following=user
-        ).exists()
-
-    def test_reject_nonexistent_request(self, auth_client):
-        response = auth_client.delete(follow_request_url(uuid4()))
-        assert response.status_code == status.HTTP_404_NOT_FOUND
-
-
-# ────────────────────────────────────────────────────────────────
-# Pending Follow Requests List
-# ────────────────────────────────────────────────────────────────
-
-
-@pytest.mark.django_db
-class TestPendingFollowRequestsListView:
-    """GET /api/v1/accounts/follow-requests/"""
-
-    def test_list_pending_requests(self, auth_client, user):
-        requester1 = UserFactory()
-        requester2 = UserFactory()
-        FollowRelationshipFactory(follower=requester1, following=user, status="pending")
-        FollowRelationshipFactory(follower=requester2, following=user, status="pending")
-        # Accepted should not appear
-        FollowRelationshipFactory(
-            follower=UserFactory(), following=user, status="accepted"
-        )
-
-        response = auth_client.get(FOLLOW_REQUESTS_URL)
-        assert response.status_code == status.HTTP_200_OK
-        results = _get_results(response)
-        assert len(results) == 2
-
-    def test_list_pending_requests_empty(self, auth_client):
-        response = auth_client.get(FOLLOW_REQUESTS_URL)
-        assert response.status_code == status.HTTP_200_OK
-        results = _get_results(response)
-        assert len(results) == 0
-
-    def test_list_pending_requests_unauthenticated(self, api_client):
-        response = api_client.get(FOLLOW_REQUESTS_URL)
-        assert response.status_code == status.HTTP_401_UNAUTHORIZED
-
-
-# ────────────────────────────────────────────────────────────────
-# Followers List
-# ────────────────────────────────────────────────────────────────
-
-
 @pytest.mark.django_db
 class TestFollowersListView:
     """GET /api/v1/accounts/users/<user_id>/followers/"""
@@ -905,49 +920,20 @@ class TestFollowersListView:
     def test_list_followers(self, auth_client, user):
         follower1 = UserFactory()
         follower2 = UserFactory()
-        FollowRelationshipFactory(follower=follower1, following=user, status="accepted")
-        FollowRelationshipFactory(follower=follower2, following=user, status="accepted")
-        # Pending should not appear
-        FollowRelationshipFactory(
-            follower=UserFactory(), following=user, status="pending"
-        )
+        FollowRelationshipFactory(follower=follower1, following=user)
+        FollowRelationshipFactory(follower=follower2, following=user)
 
         response = auth_client.get(followers_url(user.id))
         assert response.status_code == status.HTTP_200_OK
         results = _get_results(response)
         assert len(results) == 2
 
-    def test_list_own_followers_even_with_hidden_list(self, auth_client, user):
-        """User can see their own followers even if hide_followers_list is True."""
-        user.hide_followers_list = True
-        user.save(update_fields=["hide_followers_list"])
-        FollowRelationshipFactory(
-            follower=UserFactory(), following=user, status="accepted"
-        )
-
-        response = auth_client.get(followers_url(user.id))
-        assert response.status_code == status.HTTP_200_OK
-
-    def test_list_other_user_hidden_followers_forbidden(self, auth_client, user2):
-        user2.hide_followers_list = True
-        user2.save(update_fields=["hide_followers_list"])
-
-        response = auth_client.get(followers_url(user2.id))
-        assert response.status_code == status.HTTP_403_FORBIDDEN
-
-    def test_list_other_user_public_followers(self, auth_client, user2):
+    def test_list_other_user_followers(self, auth_client, user2):
         follower = UserFactory()
-        FollowRelationshipFactory(
-            follower=follower, following=user2, status="accepted"
-        )
+        FollowRelationshipFactory(follower=follower, following=user2)
 
         response = auth_client.get(followers_url(user2.id))
         assert response.status_code == status.HTTP_200_OK
-
-
-# ────────────────────────────────────────────────────────────────
-# Following List
-# ────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -957,12 +943,8 @@ class TestFollowingListView:
     def test_list_following(self, auth_client, user):
         target1 = UserFactory()
         target2 = UserFactory()
-        FollowRelationshipFactory(follower=user, following=target1, status="accepted")
-        FollowRelationshipFactory(follower=user, following=target2, status="accepted")
-        # Pending should not appear
-        FollowRelationshipFactory(
-            follower=user, following=UserFactory(), status="pending"
-        )
+        FollowRelationshipFactory(follower=user, following=target1)
+        FollowRelationshipFactory(follower=user, following=target2)
 
         response = auth_client.get(following_url(user.id))
         assert response.status_code == status.HTTP_200_OK
@@ -971,17 +953,10 @@ class TestFollowingListView:
 
     def test_list_following_other_user(self, auth_client, user2):
         target = UserFactory()
-        FollowRelationshipFactory(
-            follower=user2, following=target, status="accepted"
-        )
+        FollowRelationshipFactory(follower=user2, following=target)
 
         response = auth_client.get(following_url(user2.id))
         assert response.status_code == status.HTTP_200_OK
-
-
-# ────────────────────────────────────────────────────────────────
-# Block / Unblock
-# ────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -1011,8 +986,8 @@ class TestBlockView:
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
     def test_block_removes_follow_relationships(self, auth_client, user, user2):
-        FollowRelationshipFactory(follower=user, following=user2, status="accepted")
-        FollowRelationshipFactory(follower=user2, following=user, status="accepted")
+        FollowRelationshipFactory(follower=user, following=user2)
+        FollowRelationshipFactory(follower=user2, following=user)
 
         auth_client.post(block_url(user2.id))
 
@@ -1038,11 +1013,6 @@ class TestBlockView:
     def test_block_unauthenticated(self, api_client, user):
         response = api_client.post(block_url(user.id))
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
-
-
-# ────────────────────────────────────────────────────────────────
-# Blocked Users List
-# ────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -1080,77 +1050,6 @@ class TestBlockedUsersListView:
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
-# ────────────────────────────────────────────────────────────────
-# Privacy Settings
-# ────────────────────────────────────────────────────────────────
-
-
-@pytest.mark.django_db
-class TestPrivacySettingsView:
-    """GET/PUT /api/v1/accounts/privacy/"""
-
-    def test_get_privacy_settings(self, auth_client, user):
-        response = auth_client.get(PRIVACY_URL)
-        assert response.status_code == status.HTTP_200_OK
-        data = response.data["data"]
-        assert data["account_visibility"] == "public"
-        assert data["hide_followers_list"] is False
-
-    def test_update_privacy_to_private(self, auth_client, user):
-        response = auth_client.put(
-            PRIVACY_URL,
-            {"account_visibility": "private", "hide_followers_list": True},
-            format="json",
-        )
-        assert response.status_code == status.HTTP_200_OK
-        assert response.data["data"]["account_visibility"] == "private"
-        assert response.data["data"]["hide_followers_list"] is True
-        assert "Privacy settings updated" in response.data["message"]
-
-        user.refresh_from_db()
-        assert user.account_visibility == "private"
-        assert user.hide_followers_list is True
-
-    def test_update_only_visibility(self, auth_client, user):
-        response = auth_client.put(
-            PRIVACY_URL, {"account_visibility": "private"}, format="json"
-        )
-        assert response.status_code == status.HTTP_200_OK
-        assert response.data["data"]["account_visibility"] == "private"
-
-    def test_update_only_hide_followers(self, auth_client, user):
-        response = auth_client.put(
-            PRIVACY_URL, {"hide_followers_list": True}, format="json"
-        )
-        assert response.status_code == status.HTTP_200_OK
-        assert response.data["data"]["hide_followers_list"] is True
-
-    def test_update_back_to_public(self, auth_client, user):
-        user.account_visibility = "private"
-        user.save(update_fields=["account_visibility"])
-
-        response = auth_client.put(
-            PRIVACY_URL, {"account_visibility": "public"}, format="json"
-        )
-        assert response.status_code == status.HTTP_200_OK
-        assert response.data["data"]["account_visibility"] == "public"
-
-    def test_invalid_visibility_value(self, auth_client):
-        response = auth_client.put(
-            PRIVACY_URL, {"account_visibility": "invisible"}, format="json"
-        )
-        assert response.status_code == status.HTTP_400_BAD_REQUEST
-
-    def test_privacy_unauthenticated(self, api_client):
-        response = api_client.get(PRIVACY_URL)
-        assert response.status_code == status.HTTP_401_UNAUTHORIZED
-
-
-# ────────────────────────────────────────────────────────────────
-# Response envelope format
-# ────────────────────────────────────────────────────────────────
-
-
 @pytest.mark.django_db
 class TestResponseEnvelope:
     """Verify that all responses follow the {message, data} envelope format."""
@@ -1160,7 +1059,7 @@ class TestResponseEnvelope:
         assert "message" in response.data
         assert "data" in response.data
 
-    @patch("apps.accounts.services.UserService._send_otp_email")
+    @patch("apps.accounts.services._dispatch_otp_email")
     def test_created_response_has_envelope(self, mock_send, api_client):
         response = api_client.post(REGISTER_URL, VALID_REGISTRATION_DATA, format="json")
         assert "message" in response.data
@@ -1171,121 +1070,7 @@ class TestResponseEnvelope:
         assert "message" in response.data
 
     def test_no_content_response_has_no_body(self, auth_client, user, user2):
-        FollowRelationshipFactory(follower=user, following=user2, status="accepted")
+        FollowRelationshipFactory(follower=user, following=user2)
         response = auth_client.delete(follow_url(user2.id))
         assert response.status_code == status.HTTP_204_NO_CONTENT
         assert response.data is None
-
-
-# ────────────────────────────────────────────────────────────────
-# Cross-feature integration tests
-# ────────────────────────────────────────────────────────────────
-
-
-@pytest.mark.django_db
-class TestCrossFeatureIntegration:
-    """Integration tests spanning multiple features."""
-
-    @patch("apps.accounts.services.UserService._send_otp_email")
-    def test_full_registration_and_verification_flow(self, mock_send, api_client):
-        """Register -> get OTP -> verify email -> login."""
-        # 1. Register
-        reg_resp = api_client.post(
-            REGISTER_URL, VALID_REGISTRATION_DATA, format="json"
-        )
-        assert reg_resp.status_code == status.HTTP_201_CREATED
-
-        # 2. Get the OTP from DB
-        user = User.objects.get(email="newuser@example.com")
-        otp_token = OTPToken.objects.filter(
-            user=user, purpose="register", used=False
-        ).first()
-        assert otp_token is not None
-
-        # We need the plain code - create a new one we know
-        otp_service = OTPService()
-        code = otp_service.create_otp(user=user, purpose=OTPToken.Purpose.REGISTER)
-
-        # 3. Verify email
-        verify_resp = api_client.post(
-            VERIFY_EMAIL_URL,
-            {"email": user.email, "otp_code": code},
-            format="json",
-        )
-        assert verify_resp.status_code == status.HTTP_200_OK
-
-        # 4. Login
-        login_resp = api_client.post(
-            LOGIN_URL,
-            {"email": user.email, "password": "TestPass1!"},
-            format="json",
-        )
-        assert login_resp.status_code == status.HTTP_200_OK
-        assert "access" in login_resp.data["data"]
-
-    def test_follow_then_block_removes_relationship(self, auth_client, user, user2):
-        """Following a user then blocking them should remove the follow."""
-        auth_client.post(follow_url(user2.id))
-        assert FollowRelationship.objects.filter(
-            follower=user, following=user2
-        ).exists()
-
-        auth_client.post(block_url(user2.id))
-
-        assert not FollowRelationship.objects.filter(
-            follower=user, following=user2
-        ).exists()
-
-    def test_blocked_user_cannot_follow(self, auth_client, user, user2):
-        """After being blocked, user cannot follow the blocker."""
-        BlockRelationshipFactory(blocker=user2, blocked=user)
-        response = auth_client.post(follow_url(user2.id))
-        assert response.status_code == status.HTTP_403_FORBIDDEN
-
-    def test_password_reset_then_login_with_new_password(self, api_client):
-        """Request password reset -> verify OTP -> login with new password."""
-        user = UserFactory(is_email_verified=True)
-        otp_service = OTPService()
-        code = otp_service.create_otp(
-            user=user, purpose=OTPToken.Purpose.PASSWORD_RESET
-        )
-
-        api_client.post(
-            PASSWORD_RESET_CONFIRM_URL,
-            {
-                "email": user.email,
-                "otp_code": code,
-                "new_password": "BrandNew1!",
-            },
-            format="json",
-        )
-
-        response = api_client.post(
-            LOGIN_URL,
-            {"email": user.email, "password": "BrandNew1!"},
-            format="json",
-        )
-        assert response.status_code == status.HTTP_200_OK
-
-    def test_private_account_follow_accept_flow(self, auth_client, user):
-        """Follow private user -> pending -> accept -> appears in followers."""
-        private_user = UserFactory(account_visibility="private")
-
-        # Follow creates pending request
-        resp = auth_client.post(follow_url(private_user.id))
-        assert resp.data["data"]["status"] == "pending"
-
-        # Accept from private user's side
-        private_client = APIClient()
-        refresh = RefreshToken.for_user(private_user)
-        private_client.credentials(
-            HTTP_AUTHORIZATION=f"Bearer {refresh.access_token}"
-        )
-        accept_resp = private_client.post(follow_request_url(user.id))
-        assert accept_resp.data["data"]["status"] == "accepted"
-
-        # Verify user is now in followers list
-        followers_resp = auth_client.get(followers_url(private_user.id))
-        results = _get_results(followers_resp)
-        follower_ids = [r["follower"]["id"] for r in results]
-        assert str(user.id) in follower_ids

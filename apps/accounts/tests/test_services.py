@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -14,7 +14,6 @@ from apps.accounts.models import (
     BlockRelationship,
     FollowRelationship,
     OTPToken,
-    User,
 )
 from apps.accounts.services import (
     AuthService,
@@ -29,18 +28,11 @@ from apps.common.exceptions import (
     ForbiddenError,
     NotFoundError,
 )
-from apps.common.utils import hash_otp
 from conftest import (
     BlockRelationshipFactory,
     FollowRelationshipFactory,
-    OTPTokenFactory,
     UserFactory,
 )
-
-
-# ────────────────────────────────────────────────────────────────
-# OTPService
-# ────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -114,7 +106,6 @@ class TestOTPService:
         user = UserFactory()
         code = self.service.create_otp(user=user, purpose=OTPToken.Purpose.REGISTER)
 
-        # Set attempts to max
         OTPToken.objects.filter(user=user, purpose="register", used=False).update(
             attempts=OTPToken.MAX_ATTEMPTS
         )
@@ -128,7 +119,6 @@ class TestOTPService:
         user = UserFactory()
         code = self.service.create_otp(user=user, purpose=OTPToken.Purpose.REGISTER)
 
-        # Set expiry to past
         OTPToken.objects.filter(user=user, purpose="register", used=False).update(
             expires_at=timezone.now() - datetime.timedelta(minutes=1)
         )
@@ -150,11 +140,9 @@ class TestOTPService:
         self.service.create_otp(user=user, purpose=OTPToken.Purpose.REGISTER)
         self.service.create_otp(user=user, purpose=OTPToken.Purpose.REGISTER)
 
-        # The second create_otp should have invalidated the first
         unused = OTPToken.objects.filter(user=user, purpose="register", used=False)
         assert unused.count() == 1
 
-        # Explicit invalidation of remaining
         count = self.service.invalidate_user_otps(
             user=user, purpose=OTPToken.Purpose.REGISTER
         )
@@ -171,11 +159,6 @@ class TestOTPService:
             )
 
 
-# ────────────────────────────────────────────────────────────────
-# UserService
-# ────────────────────────────────────────────────────────────────
-
-
 @pytest.mark.django_db
 class TestUserService:
     """Tests for UserService: register, profile, update, search."""
@@ -183,7 +166,7 @@ class TestUserService:
     def setup_method(self):
         self.service = UserService()
 
-    @patch("apps.accounts.services.UserService._send_otp_email")
+    @patch("apps.accounts.services._dispatch_otp_email")
     def test_register_user_success(self, mock_send_email):
         data = {
             "email": "new@example.com",
@@ -201,7 +184,7 @@ class TestUserService:
         assert user.is_email_verified is False
         mock_send_email.assert_called_once()
 
-    @patch("apps.accounts.services.UserService._send_otp_email")
+    @patch("apps.accounts.services._dispatch_otp_email")
     def test_register_user_creates_otp(self, mock_send_email):
         data = {
             "email": "otp@example.com",
@@ -214,7 +197,7 @@ class TestUserService:
         user = self.service.register_user(validated_data=data)
         assert OTPToken.objects.filter(user=user, purpose="register").exists()
 
-    @patch("apps.accounts.services.UserService._send_otp_email")
+    @patch("apps.accounts.services._dispatch_otp_email")
     def test_register_user_duplicate_email_raises_conflict(self, mock_send_email):
         UserFactory(email="existing@example.com")
         data = {
@@ -228,7 +211,7 @@ class TestUserService:
         with pytest.raises(ConflictError, match="already exists"):
             self.service.register_user(validated_data=data)
 
-    @patch("apps.accounts.services.UserService._send_otp_email")
+    @patch("apps.accounts.services._dispatch_otp_email")
     def test_register_user_email_case_insensitive(self, mock_send_email):
         UserFactory(email="case@example.com")
         data = {
@@ -297,7 +280,7 @@ class TestUserService:
             user=user,
             validated_data={
                 "full_name": "Valid",
-                "is_staff": True,  # should be ignored
+                "is_staff": True,
             },
         )
         assert updated.full_name == "Valid"
@@ -334,27 +317,28 @@ class TestUserService:
         results = self.service.search_users(query="Inactive")
         assert results.count() == 0
 
-    @patch("apps.accounts.services.UserService._send_otp_email")
+    @patch("apps.accounts.services._dispatch_otp_email")
     def test_resend_verification_otp_for_unverified_user(self, mock_send):
         user = UserFactory(is_email_verified=False)
         self.service.resend_verification_otp(email=user.email)
         mock_send.assert_called_once()
 
-    @patch("apps.accounts.services.UserService._send_otp_email")
+    @patch("apps.accounts.services._dispatch_otp_email")
     def test_resend_verification_otp_silent_for_verified_user(self, mock_send):
         user = UserFactory(is_email_verified=True)
         self.service.resend_verification_otp(email=user.email)
         mock_send.assert_not_called()
 
-    @patch("apps.accounts.services.UserService._send_otp_email")
+    @patch("apps.accounts.services._dispatch_otp_email")
     def test_resend_verification_otp_silent_for_nonexistent_email(self, mock_send):
         self.service.resend_verification_otp(email="ghost@example.com")
         mock_send.assert_not_called()
 
-
-# ────────────────────────────────────────────────────────────────
-# AuthService
-# ────────────────────────────────────────────────────────────────
+    @patch("apps.accounts.services._dispatch_otp_email")
+    def test_resend_verification_otp_silent_for_inactive_user(self, mock_send):
+        user = UserFactory(is_active=False, is_email_verified=False)
+        self.service.resend_verification_otp(email=user.email)
+        mock_send.assert_not_called()
 
 
 @pytest.mark.django_db
@@ -388,7 +372,6 @@ class TestAuthService:
 
     def test_login_inactive_account(self):
         user = UserFactory(is_active=False, is_email_verified=True)
-        # authenticate() returns None for inactive users by default
         with pytest.raises(BadRequestError, match="Invalid email or password"):
             self.service.login(email=user.email, password="TestPass1!")
 
@@ -408,7 +391,6 @@ class TestAuthService:
         refresh = RefreshToken.for_user(user)
         self.service.logout(str(refresh))
 
-        # Token should now be blacklisted, using it again should fail
         with pytest.raises(BadRequestError, match="Invalid refresh token"):
             self.service.logout(str(refresh))
 
@@ -437,18 +419,18 @@ class TestAuthService:
                 email="ghost@example.com", otp_code="123456"
             )
 
-    @patch("apps.accounts.services.UserService._send_otp_email")
+    @patch("apps.accounts.services._dispatch_otp_email")
     def test_request_password_reset_sends_otp(self, mock_send):
         user = UserFactory(is_email_verified=True)
         self.service.request_password_reset(email=user.email)
         mock_send.assert_called_once()
 
-    @patch("apps.accounts.services.UserService._send_otp_email")
+    @patch("apps.accounts.services._dispatch_otp_email")
     def test_request_password_reset_nonexistent_email_silent(self, mock_send):
         self.service.request_password_reset(email="ghost@example.com")
         mock_send.assert_not_called()
 
-    @patch("apps.accounts.services.UserService._send_otp_email")
+    @patch("apps.accounts.services._dispatch_otp_email")
     def test_confirm_password_reset_success(self, mock_send):
         user = UserFactory(is_email_verified=True)
         otp_service = OTPService()
@@ -463,7 +445,7 @@ class TestAuthService:
         user.refresh_from_db()
         assert user.check_password("NewPass1!")
 
-    @patch("apps.accounts.services.UserService._send_otp_email")
+    @patch("apps.accounts.services._dispatch_otp_email")
     def test_confirm_password_reset_invalidates_sessions(self, mock_send):
         user = UserFactory(is_email_verified=True)
         refresh = RefreshToken.for_user(user)
@@ -477,7 +459,6 @@ class TestAuthService:
             email=user.email, otp_code=code, new_password="NewPass1!"
         )
 
-        # Old refresh token should be blacklisted
         with pytest.raises(BadRequestError):
             self.service.refresh_token(str(refresh))
 
@@ -508,29 +489,18 @@ class TestAuthService:
             self.service.refresh_token(str(refresh))
 
 
-# ────────────────────────────────────────────────────────────────
-# FollowService
-# ────────────────────────────────────────────────────────────────
-
-
 @pytest.mark.django_db
 class TestFollowService:
-    """Tests for FollowService: follow, unfollow, requests, counts."""
+    """Tests for FollowService: follow, unfollow, listings, counts."""
 
     def setup_method(self):
         self.service = FollowService()
 
-    def test_follow_public_user_accepted(self):
+    def test_follow_user_accepted(self):
         follower = UserFactory()
-        target = UserFactory(account_visibility="public")
-        rel = self.service.follow_user(follower=follower, target_id=target.id)
-        assert rel.status == FollowRelationship.Status.ACCEPTED
-
-    def test_follow_private_user_pending(self):
-        follower = UserFactory()
-        target = UserFactory(account_visibility="private")
-        rel = self.service.follow_user(follower=follower, target_id=target.id)
-        assert rel.status == FollowRelationship.Status.PENDING
+        target = UserFactory()
+        self.service.follow_user(follower=follower, target_id=target.id)
+        assert FollowRelationship.objects.filter(follower=follower, following=target).exists()
 
     def test_follow_self_raises(self):
         user = UserFactory()
@@ -560,7 +530,7 @@ class TestFollowService:
 
     def test_double_follow_raises_conflict(self):
         follower = UserFactory()
-        target = UserFactory(account_visibility="public")
+        target = UserFactory()
         self.service.follow_user(follower=follower, target_id=target.id)
 
         with pytest.raises(ConflictError, match="already follow"):
@@ -588,90 +558,32 @@ class TestFollowService:
         with pytest.raises(NotFoundError, match="not following"):
             self.service.unfollow_user(follower=follower, target_id=target.id)
 
-    def test_accept_follow_request(self):
-        follower = UserFactory()
-        target = UserFactory(account_visibility="private")
-        FollowRelationshipFactory(
-            follower=follower, following=target, status="pending"
-        )
-
-        rel = self.service.accept_follow_request(user=target, follower_id=follower.id)
-        assert rel.status == FollowRelationship.Status.ACCEPTED
-
-    def test_accept_nonexistent_request_raises(self):
-        user = UserFactory()
-        with pytest.raises(NotFoundError, match="No pending follow request"):
-            self.service.accept_follow_request(user=user, follower_id=uuid4())
-
-    def test_reject_follow_request(self):
-        follower = UserFactory()
-        target = UserFactory(account_visibility="private")
-        FollowRelationshipFactory(
-            follower=follower, following=target, status="pending"
-        )
-
-        self.service.reject_follow_request(user=target, follower_id=follower.id)
-        assert not FollowRelationship.objects.filter(
-            follower=follower, following=target
-        ).exists()
-
-    def test_reject_nonexistent_request_raises(self):
-        user = UserFactory()
-        with pytest.raises(NotFoundError, match="No pending follow request"):
-            self.service.reject_follow_request(user=user, follower_id=uuid4())
-
-    def test_get_followers_returns_accepted_only(self):
+    def test_get_followers(self):
         target = UserFactory()
         follower1 = UserFactory()
         follower2 = UserFactory()
-        FollowRelationshipFactory(
-            follower=follower1, following=target, status="accepted"
-        )
-        FollowRelationshipFactory(
-            follower=follower2, following=target, status="pending"
-        )
+        FollowRelationshipFactory(follower=follower1, following=target)
+        FollowRelationshipFactory(follower=follower2, following=target)
 
         followers = self.service.get_followers(user_id=target.id)
-        assert followers.count() == 1
+        assert followers.count() == 2
 
-    def test_get_following_returns_accepted_only(self):
+    def test_get_following(self):
         user = UserFactory()
         target1 = UserFactory()
         target2 = UserFactory()
-        FollowRelationshipFactory(
-            follower=user, following=target1, status="accepted"
-        )
-        FollowRelationshipFactory(
-            follower=user, following=target2, status="pending"
-        )
+        FollowRelationshipFactory(follower=user, following=target1)
+        FollowRelationshipFactory(follower=user, following=target2)
 
         following = self.service.get_following(user_id=user.id)
-        assert following.count() == 1
-
-    def test_get_pending_requests(self):
-        target = UserFactory()
-        follower1 = UserFactory()
-        follower2 = UserFactory()
-        FollowRelationshipFactory(
-            follower=follower1, following=target, status="pending"
-        )
-        FollowRelationshipFactory(
-            follower=follower2, following=target, status="accepted"
-        )
-
-        pending = self.service.get_pending_requests(user_id=target.id)
-        assert pending.count() == 1
+        assert following.count() == 2
 
     def test_get_follower_count(self):
         target = UserFactory()
         follower1 = UserFactory()
         follower2 = UserFactory()
-        FollowRelationshipFactory(
-            follower=follower1, following=target, status="accepted"
-        )
-        FollowRelationshipFactory(
-            follower=follower2, following=target, status="accepted"
-        )
+        FollowRelationshipFactory(follower=follower1, following=target)
+        FollowRelationshipFactory(follower=follower2, following=target)
 
         assert self.service.get_follower_count(user_id=target.id) == 2
 
@@ -679,19 +591,10 @@ class TestFollowService:
         user = UserFactory()
         target1 = UserFactory()
         target2 = UserFactory()
-        FollowRelationshipFactory(
-            follower=user, following=target1, status="accepted"
-        )
-        FollowRelationshipFactory(
-            follower=user, following=target2, status="accepted"
-        )
+        FollowRelationshipFactory(follower=user, following=target1)
+        FollowRelationshipFactory(follower=user, following=target2)
 
         assert self.service.get_following_count(user_id=user.id) == 2
-
-
-# ────────────────────────────────────────────────────────────────
-# BlockService
-# ────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db

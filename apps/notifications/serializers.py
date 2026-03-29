@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
-from apps.common.serializers import BaseModelSerializer, BaseTimestampedSerializer
+from apps.common.serializers import BaseModelSerializer
 
 from .models import DevicePushToken, Notification
 
@@ -13,11 +13,16 @@ from .models import DevicePushToken, Notification
 
 
 class SenderSerializer(serializers.Serializer):
-    """Minimal user representation for the notification sender."""
+    """Minimal user representation for the notification sender.
+
+    Matches the AuthorSerializer shape used in social serializers so the
+    frontend can use the same ``Author`` type for both.
+    """
 
     id = serializers.UUIDField(read_only=True)
     full_name = serializers.CharField(read_only=True)
     profile_photo = serializers.ImageField(read_only=True)
+    age = serializers.IntegerField(read_only=True)
 
 
 # ---------------------------------------------------------------------------
@@ -45,7 +50,7 @@ class NotificationSerializer(BaseModelSerializer):
 
 
 class NotificationListSerializer(BaseModelSerializer):
-    """Compact notification representation for list endpoints."""
+    """Notification representation for list endpoints."""
 
     sender = SenderSerializer(read_only=True, allow_null=True)
 
@@ -56,6 +61,8 @@ class NotificationListSerializer(BaseModelSerializer):
             "sender",
             "notification_type",
             "title",
+            "body",
+            "data",
             "is_read",
             "created_at",
         ]

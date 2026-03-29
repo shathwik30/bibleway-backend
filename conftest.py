@@ -13,13 +13,10 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 
-# ────────────────────────────────────────────────────────────────
-# User factory
-# ────────────────────────────────────────────────────────────────
-
 class UserFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = "accounts.User"
+        skip_postgeneration_save = True
 
     email = factory.LazyAttribute(lambda o: f"{uuid.uuid4().hex[:8]}@test.com")
     full_name = factory.Faker("name")
@@ -27,14 +24,15 @@ class UserFactory(factory.django.DjangoModelFactory):
     gender = "male"
     preferred_language = "en"
     country = "US"
-    password = factory.PostGenerationMethodCall("set_password", "TestPass1!")
     is_active = True
     is_email_verified = True
 
+    @factory.post_generation
+    def password(self, create, extracted, **kwargs):
+        self.set_password(extracted or "TestPass1!")
+        if create:
+            self.save(update_fields=["password"])
 
-# ────────────────────────────────────────────────────────────────
-# Accounts factories
-# ────────────────────────────────────────────────────────────────
 
 class OTPTokenFactory(factory.django.DjangoModelFactory):
     class Meta:
@@ -54,7 +52,6 @@ class FollowRelationshipFactory(factory.django.DjangoModelFactory):
 
     follower = factory.SubFactory(UserFactory)
     following = factory.SubFactory(UserFactory)
-    status = "accepted"
 
 
 class BlockRelationshipFactory(factory.django.DjangoModelFactory):
@@ -64,10 +61,6 @@ class BlockRelationshipFactory(factory.django.DjangoModelFactory):
     blocker = factory.SubFactory(UserFactory)
     blocked = factory.SubFactory(UserFactory)
 
-
-# ────────────────────────────────────────────────────────────────
-# Social factories
-# ────────────────────────────────────────────────────────────────
 
 class PostFactory(factory.django.DjangoModelFactory):
     class Meta:
@@ -131,10 +124,6 @@ class ReportFactory(factory.django.DjangoModelFactory):
     reason = "spam"
 
 
-# ────────────────────────────────────────────────────────────────
-# Notifications factories
-# ────────────────────────────────────────────────────────────────
-
 class NotificationFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = "notifications.Notification"
@@ -156,10 +145,6 @@ class DevicePushTokenFactory(factory.django.DjangoModelFactory):
     platform = "ios"
     is_active = True
 
-
-# ────────────────────────────────────────────────────────────────
-# Shop factories
-# ────────────────────────────────────────────────────────────────
 
 class ProductFactory(factory.django.DjangoModelFactory):
     class Meta:
@@ -196,21 +181,6 @@ class DownloadFactory(factory.django.DjangoModelFactory):
     purchase = None
 
 
-# ────────────────────────────────────────────────────────────────
-# Analytics factories
-# ────────────────────────────────────────────────────────────────
-
-class PostViewFactory(factory.django.DjangoModelFactory):
-    class Meta:
-        model = "analytics.PostView"
-
-    content_type = factory.LazyFunction(
-        lambda: ContentType.objects.get(app_label="social", model="post")
-    )
-    object_id = factory.LazyAttribute(lambda o: uuid.uuid4())
-    viewer = factory.SubFactory(UserFactory)
-
-
 class PostBoostFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = "analytics.PostBoost"
@@ -239,10 +209,6 @@ class BoostAnalyticSnapshotFactory(factory.django.DjangoModelFactory):
     snapshot_date = factory.LazyFunction(lambda: timezone.now().date())
 
 
-# ────────────────────────────────────────────────────────────────
-# Verse of Day factories
-# ────────────────────────────────────────────────────────────────
-
 class VerseOfDayFactory(factory.django.DjangoModelFactory):
     class Meta:
         model = "verse_of_day.VerseOfDay"
@@ -261,10 +227,6 @@ class VerseFallbackPoolFactory(factory.django.DjangoModelFactory):
     verse_text = "The Lord is my shepherd..."
     is_active = True
 
-
-# ────────────────────────────────────────────────────────────────
-# Admin Panel factories
-# ────────────────────────────────────────────────────────────────
 
 class AdminRoleFactory(factory.django.DjangoModelFactory):
     class Meta:
@@ -296,10 +258,6 @@ class BoostTierFactory(factory.django.DjangoModelFactory):
     display_price = "$5.00"
     is_active = True
 
-
-# ────────────────────────────────────────────────────────────────
-# Shared fixtures
-# ────────────────────────────────────────────────────────────────
 
 @pytest.fixture
 def user(db):

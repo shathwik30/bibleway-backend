@@ -10,7 +10,7 @@ import pytest
 from django.utils import timezone
 from rest_framework import status
 
-from apps.analytics.models import BoostAnalyticSnapshot, PostBoost
+from apps.analytics.models import PostBoost
 
 from conftest import (
     BoostAnalyticSnapshotFactory,
@@ -329,7 +329,7 @@ class TestPostBoostListView:
             user=user,
             is_active=False,
         )
-        response = auth_client.get(self.url)
+        response = auth_client.get(self.url, {"active_only": "true"})
         results = _paginated_results(response)
         assert len(results) == 1
 

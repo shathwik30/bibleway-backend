@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from django.contrib.contenttypes.models import ContentType
@@ -11,7 +11,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from apps.admin_panel.models import AdminLog, AdminRole, BoostTier
+from apps.admin_panel.models import AdminRole, BoostTier
 from apps.social.models import Post, Report
 
 from conftest import (
@@ -20,9 +20,6 @@ from conftest import (
     BoostTierFactory,
     PostBoostFactory,
     PostFactory,
-    ProductFactory,
-    PurchaseFactory,
-    ReportFactory,
     UserFactory,
 )
 
@@ -641,4 +638,119 @@ class TestAdminAnalyticsViews:
 
     def test_regular_user_denied_boost_performance(self, auth_client):
         response = auth_client.get(BOOST_PERFORMANCE_URL)
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+BIBLE_COMMENTS_URL = "/api/v1/admin/bible/comments/"
+BIBLE_COMMENT_DELETE_URL = "/api/v1/admin/bible/comments/{comment_id}/"
+BIBLE_LIKES_URL = "/api/v1/admin/bible/likes/"
+BIBLE_READING_STATS_URL = "/api/v1/admin/analytics/bible-reading/"
+
+
+@pytest.mark.django_db
+class TestAdminPageCommentListView:
+    """GET /api/v1/admin/bible/comments/"""
+
+    def test_list_comments(self, content_admin_client):
+        from apps.bible.models import SegregatedChapter, SegregatedPage, SegregatedPageComment, SegregatedSection
+
+        section = SegregatedSection.objects.create(title="Test", age_min=5, age_max=12, order=0)
+        chapter = SegregatedChapter.objects.create(section=section, title="Ch1", order=0)
+        page = SegregatedPage.objects.create(chapter=chapter, title="Page1", content="Text", order=0)
+        user = UserFactory()
+        SegregatedPageComment.objects.create(user=user, page=page, content="Great content!")
+
+        response = content_admin_client.get(BIBLE_COMMENTS_URL)
+        assert response.status_code == status.HTTP_200_OK
+
+    def test_list_comments_filter_by_page(self, content_admin_client):
+        from apps.bible.models import SegregatedChapter, SegregatedPage, SegregatedPageComment, SegregatedSection
+
+        section = SegregatedSection.objects.create(title="Test", age_min=5, age_max=12, order=0)
+        chapter = SegregatedChapter.objects.create(section=section, title="Ch1", order=0)
+        page1 = SegregatedPage.objects.create(chapter=chapter, title="P1", content="T", order=0)
+        page2 = SegregatedPage.objects.create(chapter=chapter, title="P2", content="T", order=1)
+        user = UserFactory()
+        SegregatedPageComment.objects.create(user=user, page=page1, content="Comment 1")
+        SegregatedPageComment.objects.create(user=user, page=page2, content="Comment 2")
+
+        response = content_admin_client.get(BIBLE_COMMENTS_URL, {"page_id": str(page1.id)})
+        assert response.status_code == status.HTTP_200_OK
+
+    def test_regular_user_denied(self, auth_client):
+        response = auth_client.get(BIBLE_COMMENTS_URL)
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+class TestAdminPageCommentDeleteView:
+    """DELETE /api/v1/admin/bible/comments/<comment_id>/"""
+
+    def test_delete_comment(self, content_admin_client):
+        from apps.bible.models import SegregatedChapter, SegregatedPage, SegregatedPageComment, SegregatedSection
+
+        section = SegregatedSection.objects.create(title="Test", age_min=5, age_max=12, order=0)
+        chapter = SegregatedChapter.objects.create(section=section, title="Ch1", order=0)
+        page = SegregatedPage.objects.create(chapter=chapter, title="P1", content="T", order=0)
+        comment = SegregatedPageComment.objects.create(user=UserFactory(), page=page, content="Bad comment")
+
+        url = BIBLE_COMMENT_DELETE_URL.format(comment_id=comment.id)
+        response = content_admin_client.delete(url)
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        assert not SegregatedPageComment.objects.filter(pk=comment.id).exists()
+
+    def test_delete_nonexistent_comment(self, content_admin_client):
+        url = BIBLE_COMMENT_DELETE_URL.format(comment_id=uuid.uuid4())
+        response = content_admin_client.delete(url)
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
+    def test_regular_user_denied(self, auth_client):
+        url = BIBLE_COMMENT_DELETE_URL.format(comment_id=uuid.uuid4())
+        response = auth_client.delete(url)
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+class TestAdminPageLikeStatsView:
+    """GET /api/v1/admin/bible/likes/"""
+
+    def test_like_stats(self, content_admin_client):
+        from apps.bible.models import SegregatedChapter, SegregatedPage, SegregatedPageLike, SegregatedSection
+
+        section = SegregatedSection.objects.create(title="Test", age_min=5, age_max=12, order=0)
+        chapter = SegregatedChapter.objects.create(section=section, title="Ch1", order=0)
+        page = SegregatedPage.objects.create(chapter=chapter, title="P1", content="T", order=0)
+        user1 = UserFactory()
+        user2 = UserFactory()
+        SegregatedPageLike.objects.create(user=user1, page=page)
+        SegregatedPageLike.objects.create(user=user2, page=page)
+
+        response = content_admin_client.get(BIBLE_LIKES_URL)
+        assert response.status_code == status.HTTP_200_OK
+        data = response.data["data"]
+        assert len(data) == 1
+        assert data[0]["like_count"] == 2
+
+    def test_like_stats_empty(self, content_admin_client):
+        response = content_admin_client.get(BIBLE_LIKES_URL)
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data["data"] == []
+
+    def test_regular_user_denied(self, auth_client):
+        response = auth_client.get(BIBLE_LIKES_URL)
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+class TestAdminBibleReadingStatsView:
+    """GET /api/v1/admin/analytics/bible-reading/"""
+
+    def test_bible_reading_stats(self, super_admin_client):
+        response = super_admin_client.get(BIBLE_READING_STATS_URL)
+        assert response.status_code == status.HTTP_200_OK
+        data = response.data["data"]
+        assert "total_bible_views" in data
+
+    def test_regular_user_denied(self, auth_client):
+        response = auth_client.get(BIBLE_READING_STATS_URL)
         assert response.status_code == status.HTTP_403_FORBIDDEN

@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import datetime
-from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 
-from apps.analytics.models import BoostAnalyticSnapshot, PostBoost, PostView
+from apps.analytics.models import PostView
 from apps.analytics.services import AnalyticsService, PostBoostService, PostViewService
 from apps.common.exceptions import BadRequestError, ForbiddenError, NotFoundError
 from apps.social.models import Post
@@ -247,11 +246,11 @@ class TestPostBoostServiceGetActive:
         PostBoostFactory(post=post, user=user, is_active=True)
         PostBoostFactory(post=post, user=user, is_active=False, transaction_id=f"inactive_{uuid4().hex[:8]}")
 
-        active = self.service.get_active_boosts(user_id=user.id)
+        active = self.service.get_user_boosts(user_id=user.id, active_only=True)
         assert active.count() == 1
 
     def test_get_active_boosts_empty(self, user):
-        active = self.service.get_active_boosts(user_id=user.id)
+        active = self.service.get_user_boosts(user_id=user.id, active_only=True)
         assert active.count() == 0
 
 

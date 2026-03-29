@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
 
 from rest_framework import serializers
 
@@ -109,6 +108,12 @@ class SegregatedPageDetailSerializer(BaseTimestampedSerializer):
             "created_at",
             "updated_at",
         ]
+
+
+class PageCommentCreateSerializer(serializers.Serializer):
+    """Validates page comment input from users."""
+
+    content = serializers.CharField(max_length=1000)
 
 
 class TranslatedPageSerializer(serializers.ModelSerializer):

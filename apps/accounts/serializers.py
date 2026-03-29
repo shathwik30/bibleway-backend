@@ -1,23 +1,29 @@
 from __future__ import annotations
 
+import datetime
+
 from django.core.validators import RegexValidator
 from rest_framework import serializers
 
 from apps.common.serializers import BaseModelSerializer
 
 from .models import BlockRelationship, FollowRelationship, User
-from .validators import validate_password_strength
+from .validators import (
+    validate_date_of_birth,
+    validate_password_strength,
+    validate_preferred_language,
+)
 
 
-# ── Validators ─────────────────────────────────────────────────────────
-
-otp_digit_validator = RegexValidator(
+otp_digit_validator: RegexValidator = RegexValidator(
     regex=r"^\d{6}$",
     message="OTP code must be exactly 6 digits.",
 )
 
-
-# ── Registration & Login ─────────────────────────────────────────────
+phone_validator: RegexValidator = RegexValidator(
+    regex=r"^\+?[0-9\s\-()]{7,20}$",
+    message="Enter a valid phone number.",
+)
 
 
 class UserRegistrationSerializer(serializers.Serializer):
@@ -30,7 +36,10 @@ class UserRegistrationSerializer(serializers.Serializer):
     gender = serializers.ChoiceField(choices=User.Gender.choices)
     preferred_language = serializers.CharField(max_length=10, default="en")
     country = serializers.CharField(max_length=100)
-    phone_number = serializers.CharField(max_length=20, required=False, default="")
+    phone_number = serializers.CharField(
+        max_length=20, required=False, default="", allow_blank=True,
+        validators=[phone_validator],
+    )
 
     def validate_password(self, value: str) -> str:
         validate_password_strength(value)
@@ -39,15 +48,40 @@ class UserRegistrationSerializer(serializers.Serializer):
     def validate_email(self, value: str) -> str:
         return value.lower().strip()
 
+    def validate_date_of_birth(self, value: datetime.date) -> datetime.date:
+        return validate_date_of_birth(value)
+
+    def validate_preferred_language(self, value: str) -> str:
+        validate_preferred_language(value)
+        return value
+
+
+class GoogleAuthSerializer(serializers.Serializer):
+    """Validates Google Sign-In input."""
+
+    id_token = serializers.CharField(write_only=True)
+    date_of_birth = serializers.DateField(required=False)
+    gender = serializers.ChoiceField(choices=User.Gender.choices, required=False)
+    country = serializers.CharField(max_length=100, required=False)
+    preferred_language = serializers.CharField(max_length=10, default="en", required=False)
+    phone_number = serializers.CharField(
+        max_length=20, required=False, default="", allow_blank=True,
+        validators=[phone_validator],
+    )
+
+    def validate_date_of_birth(self, value: datetime.date) -> datetime.date:
+        return validate_date_of_birth(value)
+
+    def validate_preferred_language(self, value: str) -> str:
+        validate_preferred_language(value)
+        return value
+
 
 class UserLoginSerializer(serializers.Serializer):
     """Validates login credentials."""
 
     email = serializers.EmailField(max_length=255)
     password = serializers.CharField(write_only=True)
-
-
-# ── User Profile ─────────────────────────────────────────────────────
 
 
 class UserProfileSerializer(BaseModelSerializer):
@@ -64,7 +98,7 @@ class UserProfileSerializer(BaseModelSerializer):
     prayer_count = serializers.IntegerField(read_only=True, default=0)
     follow_status = serializers.SerializerMethodField()
 
-    PRIVATE_FIELDS = {"email", "phone_number", "date_of_birth", "is_email_verified"}
+    PRIVATE_FIELDS: set[str] = {"email", "phone_number", "date_of_birth", "is_email_verified"}
 
     class Meta:
         model = User
@@ -79,8 +113,6 @@ class UserProfileSerializer(BaseModelSerializer):
             "phone_number",
             "profile_photo",
             "bio",
-            "account_visibility",
-            "hide_followers_list",
             "is_email_verified",
             "date_joined",
             "age",
@@ -92,28 +124,23 @@ class UserProfileSerializer(BaseModelSerializer):
         ]
         read_only_fields = fields
 
-    def get_follow_status(self, obj) -> str:
-        """Return 'none', 'following', or 'requested' for the requesting user."""
-        request_user = self.context.get("user")
+    def get_follow_status(self, obj: User) -> str:
+        """Return 'none', 'following', or 'self' for the requesting user."""
+        request_user: User | None = self.context.get("user")
         if not request_user or isinstance(obj, list):
             return "none"
         if request_user.id == obj.id:
             return "self"
-        from apps.accounts.models import FollowRelationship
-        rel = FollowRelationship.objects.filter(
+        exists: bool = FollowRelationship.objects.filter(
             follower_id=request_user.id, following_id=obj.id
-        ).values_list("status", flat=True).first()
-        if rel is None:
-            return "none"
-        if rel == FollowRelationship.Status.ACCEPTED:
-            return "following"
-        return "requested"
+        ).exists()
+        return "following" if exists else "none"
 
-    def get_fields(self):
-        fields = super().get_fields()
-        request_user = self.context.get("user")
+    def get_fields(self) -> dict[str, serializers.Field]:
+        fields: dict[str, serializers.Field] = super().get_fields()
+        request_user: User | None = self.context.get("user")
         if request_user and hasattr(self, "instance") and self.instance:
-            viewing_own = (
+            viewing_own: bool = (
                 not isinstance(self.instance, list)
                 and request_user.id == self.instance.id
             )
@@ -132,9 +159,17 @@ class UserUpdateSerializer(serializers.Serializer):
     preferred_language = serializers.CharField(max_length=10, required=False)
     country = serializers.CharField(max_length=100, required=False)
     phone_number = serializers.CharField(
-        max_length=20, required=False, allow_blank=True
+        max_length=20, required=False, allow_blank=True,
+        validators=[phone_validator],
     )
     date_of_birth = serializers.DateField(required=False)
+
+    def validate_date_of_birth(self, value: datetime.date) -> datetime.date:
+        return validate_date_of_birth(value)
+
+    def validate_preferred_language(self, value: str) -> str:
+        validate_preferred_language(value)
+        return value
 
 
 class UserListSerializer(BaseModelSerializer):
@@ -148,9 +183,6 @@ class UserListSerializer(BaseModelSerializer):
         read_only_fields = fields
 
 
-# ── Follow Relationships ─────────────────────────────────────────────
-
-
 class FollowRelationshipSerializer(BaseModelSerializer):
     """Serializer for follow relationships with nested user data."""
 
@@ -159,11 +191,8 @@ class FollowRelationshipSerializer(BaseModelSerializer):
 
     class Meta:
         model = FollowRelationship
-        fields = ["id", "follower", "following", "status", "created_at"]
+        fields = ["id", "follower", "following", "created_at"]
         read_only_fields = fields
-
-
-# ── Block Relationships ──────────────────────────────────────────────
 
 
 class BlockRelationshipSerializer(BaseModelSerializer):
@@ -175,9 +204,6 @@ class BlockRelationshipSerializer(BaseModelSerializer):
         model = BlockRelationship
         fields = ["id", "blocked", "created_at"]
         read_only_fields = fields
-
-
-# ── OTP & Password ──────────────────────────────────────────────────
 
 
 class OTPVerifySerializer(serializers.Serializer):
@@ -218,15 +244,6 @@ class ChangePasswordSerializer(serializers.Serializer):
     def validate_new_password(self, value: str) -> str:
         validate_password_strength(value)
         return value
-
-
-class PrivacySettingsSerializer(serializers.Serializer):
-    """Validates privacy settings update."""
-
-    account_visibility = serializers.ChoiceField(
-        choices=User.AccountVisibility.choices, required=False
-    )
-    hide_followers_list = serializers.BooleanField(required=False)
 
 
 class ResendOTPSerializer(serializers.Serializer):

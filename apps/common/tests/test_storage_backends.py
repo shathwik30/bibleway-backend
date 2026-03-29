@@ -35,65 +35,61 @@ class TestUrl:
 
 
 class TestSave:
-    def test_save_with_presigned_put(self, storage):
-        """_save uploads via PUT when no fields are returned."""
-        mock_session = MagicMock()
-        mock_session.put.return_value = MagicMock(raise_for_status=MagicMock())
-
-        with patch.object(UploadThingStorage, "session", new_callable=PropertyMock, return_value=mock_session), \
-             patch.object(storage, "_api") as mock_api:
+    def test_save_calls_prepare_upload_v7(self, storage):
+        """_save calls /v7/prepareUpload and PUTs the file to the presigned URL."""
+        with patch.object(storage, "_api") as mock_api, \
+             patch("apps.common.storage_backends.requests") as mock_requests:
             mock_api.return_value = {
-                "data": [{"url": "https://upload.example.com/put", "key": "file-key-123", "fields": {}}]
+                "url": "https://upload.example.com/put",
+                "key": "file-key-123",
             }
+            mock_requests.put.return_value = MagicMock(raise_for_status=MagicMock())
             content = ContentFile(b"hello world", name="test.txt")
             result = storage._save("uploads/test.txt", content)
 
         assert result == "file-key-123"
-        mock_session.put.assert_called_once()
+        mock_api.assert_called_once()
+        call_args = mock_api.call_args
+        assert call_args[0][0] == "/v7/prepareUpload"
+        payload = call_args[0][1]
+        assert payload["fileName"] == "test.txt"
+        assert payload["fileSize"] == 11
+        assert payload["acl"] == "public-read"
+        mock_requests.put.assert_called_once()
 
-    def test_save_with_multipart_form(self, storage):
-        """_save uploads via POST when fields are returned."""
-        mock_session = MagicMock()
-        mock_session.post.return_value = MagicMock(raise_for_status=MagicMock())
-
-        with patch.object(UploadThingStorage, "session", new_callable=PropertyMock, return_value=mock_session), \
-             patch.object(storage, "_api") as mock_api:
+    def test_save_sends_file_to_presigned_url(self, storage):
+        """_save PUTs file bytes to the presigned URL from prepareUpload."""
+        with patch.object(storage, "_api") as mock_api, \
+             patch("apps.common.storage_backends.requests") as mock_requests:
             mock_api.return_value = {
-                "data": [{"url": "https://upload.example.com/post", "key": "file-key-456", "fields": {"policy": "xyz"}}]
+                "url": "https://ingest.example.com/upload",
+                "key": "key-456",
             }
+            mock_put = MagicMock(raise_for_status=MagicMock())
+            mock_requests.put.return_value = mock_put
             content = ContentFile(b"pdf content", name="doc.pdf")
-            result = storage._save("shop/doc.pdf", content)
+            storage._save("shop/doc.pdf", content)
 
-        assert result == "file-key-456"
-        mock_session.post.assert_called_once()
+        put_call = mock_requests.put.call_args
+        assert put_call[0][0] == "https://ingest.example.com/upload"
 
-    def test_save_sends_correct_payload(self, storage):
-        """_save sends the correct payload to the presigned upload API."""
-        mock_session = MagicMock()
-        mock_session.put.return_value = MagicMock(raise_for_status=MagicMock())
-
-        with patch.object(UploadThingStorage, "session", new_callable=PropertyMock, return_value=mock_session), \
-             patch.object(storage, "_api") as mock_api:
-            mock_api.return_value = {
-                "data": [{"url": "https://up.example.com", "key": "k", "fields": {}}]
-            }
+    def test_save_returns_file_key(self, storage):
+        """_save returns the file key from prepareUpload response."""
+        with patch.object(storage, "_api") as mock_api, \
+             patch("apps.common.storage_backends.requests") as mock_requests:
+            mock_api.return_value = {"url": "https://up.example.com", "key": "my-key"}
+            mock_requests.put.return_value = MagicMock(raise_for_status=MagicMock())
             content = ContentFile(b"data", name="img.png")
-            storage._save("photos/img.png", content)
+            result = storage._save("photos/img.png", content)
 
-            call_args = mock_api.call_args
-            assert call_args[0][0] == "/v6/uploadFiles"
-            payload = call_args[0][1]
-            assert payload["acl"] == "public-read"
-            assert payload["files"][0]["name"] == "img.png"
-            assert payload["files"][0]["size"] == 4
-            assert payload["files"][0]["customId"] == "photos/img.png"
+        assert result == "my-key"
 
 
 class TestDelete:
-    def test_delete_calls_api(self, storage):
+    def test_delete_calls_v7_api(self, storage):
         with patch.object(storage, "_api") as mock_api:
             storage.delete("file-key-123")
-            mock_api.assert_called_once_with("/v6/deleteFiles", {"fileKeys": ["file-key-123"]})
+            mock_api.assert_called_once_with("/v7/deleteFiles", {"fileKeys": ["file-key-123"]})
 
     def test_delete_empty_name_is_noop(self, storage):
         with patch.object(storage, "_api") as mock_api:
@@ -103,7 +99,7 @@ class TestDelete:
     def test_delete_http_error_is_swallowed(self, storage):
         with patch.object(storage, "_api") as mock_api:
             mock_api.side_effect = requests.RequestException("Network error")
-            storage.delete("file-key-123")  # Should not raise
+            storage.delete("file-key-123")
 
 
 class TestExists:

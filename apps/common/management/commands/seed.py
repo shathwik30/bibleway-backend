@@ -38,7 +38,6 @@ class Command(BaseCommand):
             "notifications", "analytics", "verse_of_day", "admin_panel",
         ]
 
-        # Always flush first
         self._flush()
 
         with transaction.atomic():
@@ -53,9 +52,8 @@ class Command(BaseCommand):
                     self.stdout.write(self.style.ERROR("No users. Include 'accounts'."))
                     return
 
-            pages = []
             if "bible" in apps_to_seed:
-                pages = self._seed_bible(users)
+                self._seed_bible(users)
 
             posts, prayers = [], []
             if "social" in apps_to_seed:
@@ -81,36 +79,25 @@ class Command(BaseCommand):
     def _flush(self):
         """TRUNCATE all app tables in one shot."""
         app_tables = [
-            # analytics
             "analytics_boostanalyticsnapshot", "analytics_postboost", "analytics_postview",
-            # notifications
             "notifications_notification", "notifications_devicepushtoken",
-            # social
             "social_reply", "social_report", "social_reaction", "social_comment",
             "social_postmedia", "social_post", "social_prayermedia", "social_prayer",
-            # shop
             "shop_download", "shop_purchase", "shop_product",
-            # bible
             "bible_segregatedpagecomment", "bible_segregatedpagelike",
             "bible_translatedpagecache", "bible_note", "bible_highlight",
             "bible_bookmark", "bible_segregatedpage", "bible_segregatedchapter",
             "bible_segregatedsection",
-            # verse_of_day
             "verse_of_day_verseofday", "verse_of_day_versefallbackpool",
-            # admin_panel
             "admin_panel_adminlog", "admin_panel_adminrole", "admin_panel_boosttier",
-            # accounts (last — everything else FKs to it)
             "accounts_otptoken", "accounts_blockrelationship",
             "accounts_followrelationship", "accounts_user",
-            # token blacklist
             "token_blacklist_blacklistedtoken", "token_blacklist_outstandingtoken",
         ]
         table_list = ", ".join(f'"{t}"' for t in app_tables)
         with connection.cursor() as cursor:
             cursor.execute(f"TRUNCATE {table_list} CASCADE")
         self.stdout.write(f"  Truncated {len(app_tables)} tables")
-
-    # ── Accounts (5 users) ────────────────────────────────────────
 
     def _seed_accounts(self):
         from apps.accounts.models import BlockRelationship, FollowRelationship, User
@@ -120,24 +107,19 @@ class Command(BaseCommand):
         user_data = [
             {"email": "testuser@bibleway.app", "full_name": "Test User",
              "dob": date(1995, 6, 15), "gender": "male", "country": "United States",
-             "lang": "en", "bio": "A test account for development and QA.",
-             "visibility": "public"},
+             "lang": "en", "bio": "A test account for development and QA."},
             {"email": "jane@bibleway.app", "full_name": "Jane Smith",
              "dob": date(1990, 3, 20), "gender": "female", "country": "Nigeria",
-             "lang": "en", "bio": "Walking by faith, not by sight.",
-             "visibility": "public"},
+             "lang": "en", "bio": "Walking by faith, not by sight."},
             {"email": "carlos@bibleway.app", "full_name": "Carlos Rivera",
              "dob": date(1988, 11, 5), "gender": "male", "country": "Brazil",
-             "lang": "es", "bio": "Youth pastor. Bible nerd.",
-             "visibility": "public"},
+             "lang": "es", "bio": "Youth pastor. Bible nerd."},
             {"email": "grace@bibleway.app", "full_name": "Grace Kim",
              "dob": date(2000, 7, 12), "gender": "female", "country": "South Korea",
-             "lang": "ko", "bio": "New believer hungry to learn.",
-             "visibility": "private"},
+             "lang": "ko", "bio": "New believer hungry to learn."},
             {"email": "admin@bibleway.app", "full_name": "Admin User",
              "dob": date(1985, 1, 1), "gender": "male", "country": "United States",
-             "lang": "en", "bio": "Platform administrator.",
-             "visibility": "public"},
+             "lang": "en", "bio": "Platform administrator."},
         ]
 
         users = []
@@ -147,7 +129,6 @@ class Command(BaseCommand):
                 date_of_birth=d["dob"], gender=d["gender"],
                 country=d["country"], preferred_language=d["lang"],
                 bio=d["bio"], is_email_verified=True,
-                account_visibility=d["visibility"],
             )
             u.set_password("testpass123")
             u.save()
@@ -155,29 +136,25 @@ class Command(BaseCommand):
 
         self.stdout.write(f"  {len(users)} users created (all pw: testpass123)")
 
-        # Follows: user0↔user1, user0→user2, user1→user2, user2→user3(pending)
         follows = [
-            (users[0], users[1], "accepted"),
-            (users[1], users[0], "accepted"),
-            (users[0], users[2], "accepted"),
-            (users[1], users[2], "accepted"),
-            (users[2], users[3], "pending"),  # private account
-            (users[3], users[0], "accepted"),
-            (users[2], users[0], "accepted"),
+            (users[0], users[1]),
+            (users[1], users[0]),
+            (users[0], users[2]),
+            (users[1], users[2]),
+            (users[2], users[3]),
+            (users[3], users[0]),
+            (users[2], users[0]),
         ]
         FollowRelationship.objects.bulk_create([
-            FollowRelationship(follower=f, following=t, status=s)
-            for f, t, s in follows
+            FollowRelationship(follower=f, following=t)
+            for f, t in follows
         ])
         self.stdout.write(f"  {len(follows)} follow relationships created")
 
-        # 1 block: user0 blocks user4's admin account (edge case test)
         BlockRelationship.objects.create(blocker=users[0], blocked=users[4])
         self.stdout.write("  1 block relationship created")
 
         return users
-
-    # ── Bible (1 section → 2 chapters → 2 pages each) ────────────
 
     def _seed_bible(self, users):
         from apps.bible.models import (
@@ -188,7 +165,6 @@ class Command(BaseCommand):
 
         self.stdout.write("Seeding bible...")
 
-        # 2 sections
         sec_kids = SegregatedSection.objects.create(
             title="Little Lambs", age_min=5, age_max=12, order=0,
         )
@@ -196,7 +172,6 @@ class Command(BaseCommand):
             title="Adults", age_min=13, age_max=99, order=1,
         )
 
-        # 2 chapters per section
         ch1 = SegregatedChapter.objects.create(
             section=sec_kids, title="In the Beginning", order=0,
         )
@@ -210,7 +185,6 @@ class Command(BaseCommand):
             section=sec_adults, title="Paul's Letters", order=1,
         )
 
-        # 2 pages per chapter
         pages = []
         page_data = [
             (ch1, "Creation - Part 1", "# Creation\n\nIn the beginning God created the heavens and the earth.\n\n> *\"For God so loved the world...\"* — John 3:16"),
@@ -231,7 +205,6 @@ class Command(BaseCommand):
 
         self.stdout.write(f"  2 sections, 4 chapters, {len(pages)} pages")
 
-        # 1 translation cache
         TranslatedPageCache.objects.create(
             page=pages[0], language_code="es",
             translated_content="[ES] # Creación\n\nEn el principio Dios creó los cielos y la tierra.",
@@ -240,7 +213,6 @@ class Command(BaseCommand):
 
         page_ct = ContentType.objects.get_for_model(SegregatedPage)
 
-        # 2 bookmarks (1 API Bible, 1 segregated)
         Bookmark.objects.create(
             user=users[0], bookmark_type="api_bible",
             verse_reference="JHN.3.16",
@@ -251,7 +223,6 @@ class Command(BaseCommand):
         )
         self.stdout.write("  2 bookmarks")
 
-        # 2 highlights
         Highlight.objects.create(
             user=users[0], highlight_type="api_bible",
             verse_reference="PSA.23.1", color="yellow",
@@ -263,7 +234,6 @@ class Command(BaseCommand):
         )
         self.stdout.write("  2 highlights")
 
-        # 2 notes
         Note.objects.create(
             user=users[0], note_type="api_bible",
             verse_reference="ROM.8.28", text="This verse gives me so much comfort.",
@@ -275,7 +245,6 @@ class Command(BaseCommand):
         )
         self.stdout.write("  2 notes")
 
-        # 2 page comments + 2 page likes
         SegregatedPageComment.objects.create(
             user=users[1], page=pages[0], content="Beautiful story of creation!",
         )
@@ -288,8 +257,6 @@ class Command(BaseCommand):
 
         return pages
 
-    # ── Social (3 posts, 2 prayers, reactions, comments, replies, report) ──
-
     def _seed_social(self, users):
         from apps.social.models import Comment, Post, Prayer, Reaction, Reply, Report
 
@@ -298,7 +265,6 @@ class Command(BaseCommand):
         post_ct = ContentType.objects.get_for_model(Post)
         prayer_ct = ContentType.objects.get_for_model(Prayer)
 
-        # 3 posts (1 boosted)
         p1 = Post.objects.create(
             author=users[0],
             text_content="Just finished my morning devotion. What a beautiful day to praise the Lord!",
@@ -315,7 +281,6 @@ class Command(BaseCommand):
         posts = [p1, p2, p3]
         self.stdout.write(f"  {len(posts)} posts (1 boosted)")
 
-        # 2 prayers
         pr1 = Prayer.objects.create(
             author=users[1], title="Healing for my mother",
             description="Please pray for my mother who is battling cancer.",
@@ -327,7 +292,6 @@ class Command(BaseCommand):
         prayers = [pr1, pr2]
         self.stdout.write(f"  {len(prayers)} prayers")
 
-        # Reactions (a few per post/prayer)
         reactions = [
             (users[1], post_ct, p1.id, "heart"),
             (users[2], post_ct, p1.id, "amen"),
@@ -344,12 +308,11 @@ class Command(BaseCommand):
         ])
         self.stdout.write(f"  {len(reactions)} reactions")
 
-        # Comments
         c1 = Comment.objects.create(
             user=users[1], content_type=post_ct, object_id=p1.id,
             text="Amen! Praying for you!",
         )
-        c2 = Comment.objects.create(
+        Comment.objects.create(
             user=users[2], content_type=post_ct, object_id=p2.id,
             text="This is so encouraging. Thank you for sharing!",
         )
@@ -359,12 +322,10 @@ class Command(BaseCommand):
         )
         self.stdout.write("  3 comments")
 
-        # Replies
         Reply.objects.create(user=users[0], comment=c1, text="Thank you so much!")
         Reply.objects.create(user=users[1], comment=c3, text="God is faithful!")
         self.stdout.write("  2 replies")
 
-        # 1 report
         Report.objects.create(
             reporter=users[3], content_type=post_ct, object_id=p3.id,
             reason="spam", description="Looks like promotional content.",
@@ -372,8 +333,6 @@ class Command(BaseCommand):
         self.stdout.write("  1 report")
 
         return posts, prayers
-
-    # ── Shop (3 products, 1 purchase, 1 free download) ────────────
 
     def _seed_shop(self, users):
         from apps.shop.models import Download, Product, Purchase
@@ -388,7 +347,7 @@ class Command(BaseCommand):
             apple_product_id="com.bibleway.ios.daily_devotional",
             google_product_id="com.bibleway.android.daily_devotional",
         )
-        prod_paid2 = Product.objects.create(
+        Product.objects.create(
             title="Bible Study Workbook: Romans",
             description="In-depth study guide for the book of Romans.",
             price_tier="com.bibleway.shop.study_guides",
@@ -403,7 +362,6 @@ class Command(BaseCommand):
         )
         self.stdout.write("  3 products (2 paid, 1 free)")
 
-        # 1 purchase + download
         txn_id = f"txn_{uuid.uuid4().hex[:16]}"
         purchase = Purchase.objects.create(
             user=users[0], product=prod_paid1, platform="ios",
@@ -413,12 +371,9 @@ class Command(BaseCommand):
         Download.objects.create(user=users[0], product=prod_paid1, purchase=purchase)
         self.stdout.write("  1 purchase + download")
 
-        # 2 free downloads
         Download.objects.create(user=users[0], product=prod_free, purchase=None)
         Download.objects.create(user=users[1], product=prod_free, purchase=None)
         self.stdout.write("  2 free downloads")
-
-    # ── Notifications (5 notifications, 2 device tokens) ──────────
 
     def _seed_notifications(self, users):
         from apps.notifications.models import DevicePushToken, Notification
@@ -468,8 +423,6 @@ class Command(BaseCommand):
         )
         self.stdout.write("  2 device tokens")
 
-    # ── Analytics (views + 1 boost with snapshot) ─────────────────
-
     def _seed_analytics(self, users, posts, prayers):
         from apps.analytics.models import BoostAnalyticSnapshot, PostBoost, PostView
         from apps.social.models import Post as PostModel, Prayer as PrayerModel
@@ -484,7 +437,6 @@ class Command(BaseCommand):
         if not prayers:
             prayers = list(PrayerModel.objects.all()[:2])
 
-        # A few views per post/prayer
         views = []
         for post in posts:
             for viewer in users[:3]:
@@ -495,7 +447,6 @@ class Command(BaseCommand):
         PostView.objects.bulk_create(views)
         self.stdout.write(f"  {len(views)} post/prayer views")
 
-        # 1 boost on the boosted post
         boosted = [p for p in posts if p.is_boosted]
         if boosted:
             now = timezone.now()
@@ -509,7 +460,6 @@ class Command(BaseCommand):
                 activated_at=activated,
                 expires_at=activated + timedelta(days=3),
             )
-            # 2 daily snapshots
             for day in range(2):
                 BoostAnalyticSnapshot.objects.create(
                     boost=boost,
@@ -521,8 +471,6 @@ class Command(BaseCommand):
                     profile_visits=12 + day * 5,
                 )
             self.stdout.write("  1 boost + 2 analytics snapshots")
-
-    # ── Verse of the Day (3 scheduled + 3 fallback) ───────────────
 
     def _seed_verse_of_day(self):
         from apps.verse_of_day.models import VerseFallbackPool, VerseOfDay
@@ -547,21 +495,17 @@ class Command(BaseCommand):
 
         self.stdout.write("  3 scheduled verses + 3 fallback pool")
 
-    # ── Admin Panel (1 admin role, 3 boost tiers, 1 log) ──────────
-
     def _seed_admin_panel(self, users):
         from apps.admin_panel.models import AdminLog, AdminRole, BoostTier
 
         self.stdout.write("Seeding admin panel...")
 
-        # Make last user (admin@bibleway.app) a super admin
         admin_user = users[4] if len(users) > 4 else users[0]
         admin_user.is_staff = True
         admin_user.save(update_fields=["is_staff"])
         AdminRole.objects.create(user=admin_user, role="super_admin")
         self.stdout.write("  1 admin role (super_admin)")
 
-        # Boost tiers
         BoostTier.objects.bulk_create([
             BoostTier(
                 name="1-Day Boost",

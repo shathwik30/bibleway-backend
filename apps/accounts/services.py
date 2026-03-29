@@ -4,8 +4,9 @@ import logging
 from typing import Any
 from uuid import UUID
 
+from django.conf import settings
 from django.contrib.auth import authenticate
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Count, IntegerField, OuterRef, Q, QuerySet, Subquery
 from django.db.models.functions import Coalesce
 from rest_framework_simplejwt.exceptions import TokenError
@@ -17,16 +18,39 @@ from apps.common.exceptions import (
     ForbiddenError,
     NotFoundError,
 )
-
 from apps.common.services import BaseService, BaseUserScopedService
 from apps.common.utils import generate_otp, get_otp_expiry, hash_otp, verify_otp
 
 from .models import BlockRelationship, FollowRelationship, OTPToken, User
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
-# ── OTP Service ──────────────────────────────────────────────────────
+def _count_subquery(model: type, filter_field: str) -> Subquery:
+    """Build a correlated COUNT subquery for annotating user profiles."""
+    return Subquery(
+        model.objects.filter(**{filter_field: OuterRef("pk")})
+        .order_by()
+        .values(filter_field)
+        .annotate(c=Count("id"))
+        .values("c")
+    )
+
+
+def _get_active_user(user_id: UUID) -> User:
+    """Retrieve an active user or raise NotFoundError."""
+    try:
+        return User.objects.get(pk=user_id, is_active=True)
+    except User.DoesNotExist:
+        raise NotFoundError(detail="User not found.")
+
+
+def _check_not_blocked(user_a: User, user_b: User) -> None:
+    """Raise ForbiddenError if either user has blocked the other."""
+    if BlockRelationship.objects.filter(
+        Q(blocker=user_a, blocked=user_b) | Q(blocker=user_b, blocked=user_a)
+    ).exists():
+        raise ForbiddenError(detail="This action is not allowed.")
 
 
 class OTPService(BaseService[OTPToken]):
@@ -58,11 +82,7 @@ class OTPService(BaseService[OTPToken]):
         """
         token: OTPToken | None = (
             OTPToken.objects.select_for_update()
-            .filter(
-                user=user,
-                purpose=purpose,
-                used=False,
-            )
+            .filter(user=user, purpose=purpose, used=False)
             .order_by("-created_at")
             .first()
         )
@@ -93,13 +113,8 @@ class OTPService(BaseService[OTPToken]):
     def invalidate_user_otps(self, user: User, purpose: str) -> int:
         """Mark all unused OTPs for the given user and purpose as used."""
         return OTPToken.objects.filter(
-            user=user,
-            purpose=purpose,
-            used=False,
+            user=user, purpose=purpose, used=False,
         ).update(used=True)
-
-
-# ── User Service ─────────────────────────────────────────────────────
 
 
 class UserService(BaseService[User]):
@@ -122,17 +137,19 @@ class UserService(BaseService[User]):
             raise ConflictError(detail="A user with this email already exists.")
 
         password: str = validated_data.pop("password")
-        user: User = User.objects.create_user(
-            email=email,
-            password=password,
-            **{k: v for k, v in validated_data.items() if k != "email"},
-        )
+        try:
+            user: User = User.objects.create_user(
+                email=email,
+                password=password,
+                **{k: v for k, v in validated_data.items() if k != "email"},
+            )
+        except IntegrityError:
+            raise ConflictError(detail="A user with this email already exists.")
 
         plain_code: str = self._otp_service.create_otp(
             user=user,
             purpose=OTPToken.Purpose.REGISTER,
         )
-
         self._send_otp_email(user=user, code=plain_code, purpose="registration")
         return user
 
@@ -144,56 +161,25 @@ class UserService(BaseService[User]):
         """
         from apps.social.models import Post, Prayer
 
-        follower_sq = (
-            FollowRelationship.objects.filter(
-                following_id=OuterRef("pk"),
-                status=FollowRelationship.Status.ACCEPTED,
-            )
-            .order_by()
-            .values("following_id")
-            .annotate(c=Count("id"))
-            .values("c")
-        )
-        following_sq = (
-            FollowRelationship.objects.filter(
-                follower_id=OuterRef("pk"),
-                status=FollowRelationship.Status.ACCEPTED,
-            )
-            .order_by()
-            .values("follower_id")
-            .annotate(c=Count("id"))
-            .values("c")
-        )
-        post_sq = (
-            Post.objects.filter(author_id=OuterRef("pk"))
-            .order_by()
-            .values("author_id")
-            .annotate(c=Count("id"))
-            .values("c")
-        )
-        prayer_sq = (
-            Prayer.objects.filter(author_id=OuterRef("pk"))
-            .order_by()
-            .values("author_id")
-            .annotate(c=Count("id"))
-            .values("c")
-        )
-
         try:
             return (
                 self.get_queryset()
                 .annotate(
                     follower_count=Coalesce(
-                        Subquery(follower_sq), 0, output_field=IntegerField()
+                        _count_subquery(FollowRelationship, "following_id"),
+                        0, output_field=IntegerField(),
                     ),
                     following_count=Coalesce(
-                        Subquery(following_sq), 0, output_field=IntegerField()
+                        _count_subquery(FollowRelationship, "follower_id"),
+                        0, output_field=IntegerField(),
                     ),
                     post_count=Coalesce(
-                        Subquery(post_sq), 0, output_field=IntegerField()
+                        _count_subquery(Post, "author_id"),
+                        0, output_field=IntegerField(),
                     ),
                     prayer_count=Coalesce(
-                        Subquery(prayer_sq), 0, output_field=IntegerField()
+                        _count_subquery(Prayer, "author_id"),
+                        0, output_field=IntegerField(),
                     ),
                 )
                 .get(pk=user_id)
@@ -243,12 +229,12 @@ class UserService(BaseService[User]):
     def resend_verification_otp(self, email: str) -> None:
         """Resend email verification OTP for unverified users."""
         try:
-            user = User.objects.get(email__iexact=email, is_active=True)
+            user: User = User.objects.get(email__iexact=email, is_active=True)
         except User.DoesNotExist:
-            return  # Silent return to prevent user enumeration
+            return
 
         if user.is_email_verified:
-            return  # Silent return to prevent user enumeration
+            return
 
         plain_code: str = self._otp_service.create_otp(
             user=user,
@@ -259,20 +245,22 @@ class UserService(BaseService[User]):
     @staticmethod
     def _send_otp_email(user: User, code: str, purpose: str) -> None:
         """Dispatch the OTP email asynchronously via Celery."""
-        try:
-            from .tasks import send_otp_email_task
-
-            send_otp_email_task.delay(
-                user_email=user.email,
-                user_name=user.full_name,
-                otp_code=code,
-                purpose=purpose,
-            )
-        except Exception:
-            logger.exception("Failed to dispatch OTP email task for %s", user.email)
+        _dispatch_otp_email(user=user, code=code, purpose=purpose)
 
 
-# ── Auth Service ─────────────────────────────────────────────────────
+def _dispatch_otp_email(user: User, code: str, purpose: str) -> None:
+    """Send OTP email via Celery task. Logs and swallows failures."""
+    try:
+        from .tasks import send_otp_email_task
+
+        send_otp_email_task.delay(
+            user_email=user.email,
+            user_name=user.full_name,
+            otp_code=code,
+            purpose=purpose,
+        )
+    except Exception:
+        logger.exception("Failed to dispatch OTP email task for %s", user.email)
 
 
 class AuthService:
@@ -280,7 +268,96 @@ class AuthService:
 
     def __init__(self) -> None:
         self._otp_service = OTPService()
-        self._user_service = UserService()
+
+    @transaction.atomic
+    def google_auth(self, validated_data: dict[str, Any]) -> dict[str, Any]:
+        """Authenticate or register via Google Sign-In.
+
+        - Existing user: returns JWT tokens.
+        - New user without required fields: returns google profile for frontend completion.
+        - New user with required fields: creates user, returns JWT tokens.
+        """
+        from google.auth.transport import requests as google_requests
+        from google.oauth2 import id_token as google_id_token
+
+        token: str = validated_data["id_token"]
+
+        try:
+            google_info: dict[str, Any] = google_id_token.verify_oauth2_token(
+                token,
+                google_requests.Request(),
+                clock_skew_in_seconds=10,
+            )
+        except ValueError:
+            raise BadRequestError(detail="Invalid Google ID token.")
+
+        allowed_ids: list[str] = settings.GOOGLE_OAUTH_CLIENT_IDS
+        if not allowed_ids:
+            raise BadRequestError(detail="Google Sign-In is not configured on the server.")
+        if google_info.get("aud") not in allowed_ids:
+            raise BadRequestError(detail="Invalid Google ID token audience.")
+
+        email: str = google_info.get("email", "").lower().strip()
+        if not email or not google_info.get("email_verified", False):
+            raise BadRequestError(detail="Google account email is not verified.")
+
+        existing_user: User | None = User.objects.filter(email__iexact=email).first()
+        if existing_user is not None:
+            if not existing_user.is_active:
+                raise ForbiddenError(detail="This account has been deactivated.")
+            logger.info("Google login for existing user=%s", existing_user.id)
+            refresh: RefreshToken = RefreshToken.for_user(existing_user)
+            return {
+                "is_new_user": False,
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+                "user_id": str(existing_user.id),
+            }
+
+        google_name: str = google_info.get("name", "")
+        google_picture: str = google_info.get("picture", "")
+
+        has_required: bool = all(
+            k in validated_data for k in ("date_of_birth", "gender", "country")
+        )
+
+        if not has_required:
+            return {
+                "is_new_user": True,
+                "google_user": {
+                    "email": email,
+                    "full_name": google_name,
+                    "profile_photo": google_picture,
+                },
+            }
+
+        full_name: str = validated_data.get("full_name", google_name) or google_name
+        if not full_name:
+            raise BadRequestError(detail="Full name is required.")
+
+        try:
+            user: User = User.objects.create_user(
+                email=email,
+                password=None,
+                full_name=full_name,
+                date_of_birth=validated_data["date_of_birth"],
+                gender=validated_data["gender"],
+                country=validated_data["country"],
+                preferred_language=validated_data.get("preferred_language", "en"),
+                phone_number=validated_data.get("phone_number", ""),
+                is_email_verified=True,
+            )
+        except IntegrityError:
+            raise ConflictError(detail="A user with this email already exists.")
+
+        logger.info("Google registration for new user=%s", user.id)
+        refresh = RefreshToken.for_user(user)
+        return {
+            "is_new_user": False,
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "user_id": str(user.id),
+        }
 
     def login(self, email: str, password: str) -> dict[str, str]:
         """Validate credentials and return JWT token pair.
@@ -358,7 +435,7 @@ class AuthService:
             user=user,
             purpose=OTPToken.Purpose.PASSWORD_RESET,
         )
-        UserService._send_otp_email(user=user, code=plain_code, purpose="password_reset")
+        _dispatch_otp_email(user=user, code=plain_code, purpose="password_reset")
 
     @transaction.atomic
     def confirm_password_reset(
@@ -402,51 +479,74 @@ class AuthService:
         """Blacklist all outstanding refresh tokens for the user."""
         from rest_framework_simplejwt.token_blacklist.models import OutstandingToken
 
-        outstanding = OutstandingToken.objects.filter(user=user)
+        outstanding: QuerySet[OutstandingToken] = OutstandingToken.objects.filter(user=user)
         for token_record in outstanding:
             try:
-                refresh = RefreshToken(token_record.token)
+                refresh: RefreshToken = RefreshToken(token_record.token)
                 refresh.blacklist()
             except TokenError:
                 pass
 
 
-# ── Follow Service ───────────────────────────────────────────────────
-
-
 class FollowService(BaseService[FollowRelationship]):
-    """Handles follow/unfollow, follow requests, and follower listings."""
+    """Handles follow/unfollow and follower listings."""
 
     model = FollowRelationship
 
     @transaction.atomic
     def follow_user(self, follower: User, target_id: UUID) -> FollowRelationship:
-        """Follow a user. If the target is private, create a pending request."""
+        """Follow a user. All follows are immediate."""
         if follower.id == target_id:
             raise BadRequestError(detail="You cannot follow yourself.")
 
-        target: User = self._get_active_user(target_id)
-        self._check_not_blocked(user_a=follower, user_b=target)
+        target: User = _get_active_user(target_id)
+        _check_not_blocked(user_a=follower, user_b=target)
 
-        follow_status: str = (
-            FollowRelationship.Status.PENDING
-            if target.account_visibility == User.AccountVisibility.PRIVATE
-            else FollowRelationship.Status.ACCEPTED
-        )
-
+        relationship: FollowRelationship
+        created: bool
         relationship, created = FollowRelationship.objects.get_or_create(
             follower=follower,
             following=target,
-            defaults={"status": follow_status},
         )
 
         if not created:
-            raise ConflictError(detail="You already follow or have a pending request for this user.")
+            raise ConflictError(detail="You already follow this user.")
 
+        self._invalidate_profile_caches(follower.id, target_id)
+        self._send_follow_notification(follower=follower, target_id=target_id)
         return relationship
 
+    @staticmethod
+    def _send_follow_notification(follower: User, target_id: UUID) -> None:
+        """Dispatch a follow notification to the target user."""
+        try:
+            from apps.common.utils import build_notification_data
+            from apps.notifications.services import NotificationService
+
+            NotificationService().create_notification(
+                recipient_id=target_id,
+                sender_id=follower.id,
+                notification_type="follow",
+                title=f"{follower.full_name} started following you",
+                body=f"{follower.full_name} is now following you.",
+                data=build_notification_data("follow", user_id=follower.id),
+            )
+        except Exception:
+            logger.warning(
+                "Failed to send follow notification from %s to %s",
+                follower.id, target_id, exc_info=True,
+            )
+
+    @staticmethod
+    def _invalidate_profile_caches(*user_ids: UUID) -> None:
+        """Clear cached profile responses so follower counts refresh."""
+        from django.core.cache import cache
+
+        for uid in user_ids:
+            cache.delete(f"profile_resp:{uid}")
+
     def unfollow_user(self, follower: User, target_id: UUID) -> None:
-        """Remove a follow relationship (accepted or pending)."""
+        """Remove a follow relationship."""
         deleted_count: int
         deleted_count, _ = FollowRelationship.objects.filter(
             follower=follower,
@@ -455,97 +555,29 @@ class FollowService(BaseService[FollowRelationship]):
 
         if deleted_count == 0:
             raise NotFoundError(detail="You are not following this user.")
-
-    def accept_follow_request(self, user: User, follower_id: UUID) -> FollowRelationship:
-        """Accept a pending follow request."""
-        relationship: FollowRelationship = self._get_pending_request(
-            target=user, follower_id=follower_id
-        )
-        relationship.status = FollowRelationship.Status.ACCEPTED
-        relationship.save(update_fields=["status"])
-        return relationship
-
-    def reject_follow_request(self, user: User, follower_id: UUID) -> None:
-        """Reject (delete) a pending follow request."""
-        relationship: FollowRelationship = self._get_pending_request(
-            target=user, follower_id=follower_id
-        )
-        relationship.delete()
+        self._invalidate_profile_caches(follower.id, target_id)
 
     def get_followers(self, user_id: UUID) -> QuerySet[FollowRelationship]:
-        """Return accepted followers for a user."""
+        """Return followers for a user."""
         return (
-            FollowRelationship.objects.filter(
-                following_id=user_id,
-                status=FollowRelationship.Status.ACCEPTED,
-            )
+            FollowRelationship.objects.filter(following_id=user_id)
             .select_related("follower")
         )
 
     def get_following(self, user_id: UUID) -> QuerySet[FollowRelationship]:
-        """Return users that the given user is following (accepted only)."""
+        """Return users that the given user is following."""
         return (
-            FollowRelationship.objects.filter(
-                follower_id=user_id,
-                status=FollowRelationship.Status.ACCEPTED,
-            )
+            FollowRelationship.objects.filter(follower_id=user_id)
             .select_related("following")
         )
 
-    def get_pending_requests(self, user_id: UUID) -> QuerySet[FollowRelationship]:
-        """Return pending follow requests received by the user."""
-        return (
-            FollowRelationship.objects.filter(
-                following_id=user_id,
-                status=FollowRelationship.Status.PENDING,
-            )
-            .select_related("follower")
-        )
-
     def get_follower_count(self, user_id: UUID) -> int:
-        """Count accepted followers."""
-        return FollowRelationship.objects.filter(
-            following_id=user_id,
-            status=FollowRelationship.Status.ACCEPTED,
-        ).count()
+        """Count followers."""
+        return FollowRelationship.objects.filter(following_id=user_id).count()
 
     def get_following_count(self, user_id: UUID) -> int:
-        """Count accepted following."""
-        return FollowRelationship.objects.filter(
-            follower_id=user_id,
-            status=FollowRelationship.Status.ACCEPTED,
-        ).count()
-
-    # ── Private helpers ──────────────────────────────────────────
-
-    @staticmethod
-    def _get_active_user(user_id: UUID) -> User:
-        try:
-            return User.objects.get(pk=user_id, is_active=True)
-        except User.DoesNotExist:
-            raise NotFoundError(detail="User not found.")
-
-    @staticmethod
-    def _check_not_blocked(user_a: User, user_b: User) -> None:
-        """Raise ForbiddenError if either user has blocked the other."""
-        if BlockRelationship.objects.filter(
-            Q(blocker=user_a, blocked=user_b) | Q(blocker=user_b, blocked=user_a)
-        ).exists():
-            raise ForbiddenError(detail="This action is not allowed.")
-
-    @staticmethod
-    def _get_pending_request(target: User, follower_id: UUID) -> FollowRelationship:
-        try:
-            return FollowRelationship.objects.get(
-                follower_id=follower_id,
-                following=target,
-                status=FollowRelationship.Status.PENDING,
-            )
-        except FollowRelationship.DoesNotExist:
-            raise NotFoundError(detail="No pending follow request from this user.")
-
-
-# ── Block Service ────────────────────────────────────────────────────
+        """Count following."""
+        return FollowRelationship.objects.filter(follower_id=user_id).count()
 
 
 class BlockService(BaseUserScopedService[BlockRelationship]):
@@ -560,9 +592,10 @@ class BlockService(BaseUserScopedService[BlockRelationship]):
         if blocker.id == target_id:
             raise BadRequestError(detail="You cannot block yourself.")
 
-        if not User.objects.filter(pk=target_id, is_active=True).exists():
-            raise NotFoundError(detail="User not found.")
+        _get_active_user(target_id)
 
+        relationship: BlockRelationship
+        created: bool
         relationship, created = BlockRelationship.objects.get_or_create(
             blocker=blocker,
             blocked_id=target_id,

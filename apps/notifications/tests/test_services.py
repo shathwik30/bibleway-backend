@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -25,7 +25,7 @@ class TestNotificationServiceCreate:
     @patch("apps.notifications.services.NotificationService.create_notification.__module__")
     def test_create_notification(self, _mock, user, user2):
         """create_notification persists a notification and dispatches a push task."""
-        with patch("apps.notifications.tasks.send_push_notification.delay") as mock_push:
+        with patch("apps.notifications.tasks.send_push_notification.delay"):
             notification = self.service.create_notification(
                 recipient_id=user.id,
                 sender_id=user2.id,

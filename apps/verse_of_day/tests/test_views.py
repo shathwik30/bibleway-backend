@@ -18,11 +18,15 @@ from rest_framework import status
 class TestTodayVerseView:
     url = "/api/v1/verse-of-day/today/"
 
+    def setup_method(self):
+        from django.core.cache import cache
+        cache.clear()
+
     def test_returns_scheduled_verse(self, auth_client):
         from conftest import VerseOfDayFactory
 
         today = timezone.now().date()
-        verse = VerseOfDayFactory(
+        VerseOfDayFactory(
             display_date=today,
             is_active=True,
             bible_reference="Psalm 119:105",

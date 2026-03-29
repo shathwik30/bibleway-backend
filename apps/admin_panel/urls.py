@@ -3,6 +3,7 @@ from __future__ import annotations
 from django.urls import path
 
 from .views import (
+    AdminBibleReadingStatsView,
     AdminBoostDetailView,
     AdminBoostListView,
     AdminBoostPerformanceView,
@@ -20,7 +21,10 @@ from .views import (
     AdminFallbackPoolListView,
     AdminFallbackPoolUpdateView,
     AdminLogListView,
+    AdminPageCommentDeleteView,
+    AdminPageCommentListView,
     AdminPageDetailView,
+    AdminPageLikeStatsView,
     AdminPageListView,
     AdminProductDetailView,
     AdminProductListView,
@@ -198,6 +202,21 @@ urlpatterns: list = [
         AdminPageDetailView.as_view(),
         name="bible-page-detail",
     ),
+    path(
+        "bible/comments/",
+        AdminPageCommentListView.as_view(),
+        name="bible-comment-list",
+    ),
+    path(
+        "bible/comments/<uuid:comment_id>/",
+        AdminPageCommentDeleteView.as_view(),
+        name="bible-comment-delete",
+    ),
+    path(
+        "bible/likes/",
+        AdminPageLikeStatsView.as_view(),
+        name="bible-like-stats",
+    ),
     # ── Shop Management ────────────────────────────────────────────────
     path(
         "shop/products/",
@@ -286,6 +305,11 @@ urlpatterns: list = [
         "analytics/boost-performance/",
         AdminBoostPerformanceView.as_view(),
         name="analytics-boost-performance",
+    ),
+    path(
+        "analytics/bible-reading/",
+        AdminBibleReadingStatsView.as_view(),
+        name="analytics-bible-reading",
     ),
     # ── Admin Logs ─────────────────────────────────────────────────────
     path(

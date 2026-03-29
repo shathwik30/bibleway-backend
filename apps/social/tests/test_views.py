@@ -13,10 +13,8 @@ from apps.social.models import Comment, Post, Prayer, Reaction, Reply, Report
 
 from conftest import (
     BlockRelationshipFactory,
-    CommentFactory,
     PostFactory,
     PrayerFactory,
-    ReportFactory,
     UserFactory,
 )
 

@@ -8,7 +8,6 @@ from django.core.cache import cache
 from django.db.models import QuerySet
 from django.utils import timezone
 
-from apps.common.exceptions import NotFoundError
 from apps.common.services import BaseService
 
 from .models import VerseFallbackPool, VerseOfDay

@@ -7,7 +7,7 @@ from rest_framework import serializers
 from apps.accounts.models import User
 from apps.admin_panel.models import AdminLog, AdminRole, BoostTier
 from apps.analytics.models import BoostAnalyticSnapshot, PostBoost
-from apps.bible.models import SegregatedChapter, SegregatedPage, SegregatedSection
+from apps.bible.models import SegregatedChapter, SegregatedPage, SegregatedPageComment, SegregatedSection
 from apps.common.serializers import BaseModelSerializer, BaseTimestampedSerializer
 from apps.notifications.models import Notification
 from apps.shop.models import Product, Purchase
@@ -124,13 +124,10 @@ class AdminUserDetailSerializer(BaseModelSerializer):
             "phone_number",
             "profile_photo",
             "bio",
-            "account_visibility",
-            "hide_followers_list",
             "is_active",
             "is_staff",
             "is_email_verified",
             "date_joined",
-            # computed
             "age",
             "follower_count",
             "following_count",
@@ -777,6 +774,47 @@ class AdminShopRevenueSerializer(serializers.Serializer):
 # ═══════════════════════════════════════════════════════════════════
 # Admin Logs
 # ═══════════════════════════════════════════════════════════════════
+
+
+class AdminPageCommentSerializer(BaseTimestampedSerializer):
+    """Admin view of a user comment on a Bible page."""
+
+    user = _MinimalUserSerializer(read_only=True)
+    page_title = serializers.CharField(source="page.title", read_only=True)
+    chapter_title = serializers.CharField(source="page.chapter.title", read_only=True)
+    section_title = serializers.CharField(source="page.chapter.section.title", read_only=True)
+
+    class Meta:
+        model = SegregatedPageComment
+        fields: list[str] = [
+            "id",
+            "user",
+            "page",
+            "page_title",
+            "chapter_title",
+            "section_title",
+            "content",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields: list[str] = fields
+
+
+class AdminPageLikeStatsSerializer(serializers.Serializer):
+    """Aggregated like statistics for a Bible page."""
+
+    page_id = serializers.UUIDField(read_only=True)
+    page_title = serializers.CharField(read_only=True)
+    chapter_title = serializers.CharField(read_only=True)
+    section_title = serializers.CharField(read_only=True)
+    like_count = serializers.IntegerField(read_only=True)
+
+
+class AdminBibleReadingStatsSerializer(serializers.Serializer):
+    """Bible reading statistics."""
+
+    total_bible_views = serializers.IntegerField(read_only=True)
+    views_breakdown = serializers.ListField(read_only=True)
 
 
 class AdminLogSerializer(BaseModelSerializer):

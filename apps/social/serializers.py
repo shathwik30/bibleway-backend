@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import Any
-from uuid import UUID
 
 from django.contrib.contenttypes.models import ContentType
 from rest_framework import serializers
@@ -204,6 +203,7 @@ class PostListSerializer(BaseTimestampedSerializer):
             "comment_count",
             "user_reaction",
             "created_at",
+            "updated_at",
         ]
 
     def get_user_reaction(self, obj: Post) -> str | None:
@@ -324,6 +324,7 @@ class PrayerListSerializer(BaseTimestampedSerializer):
             "comment_count",
             "user_reaction",
             "created_at",
+            "updated_at",
         ]
 
     def get_user_reaction(self, obj: Prayer) -> str | None:

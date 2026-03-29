@@ -24,16 +24,14 @@ firebase-admin>=6.4,<7.0
 # Email
 resend>=2.0,<3.0
 
-# Translation
-google-cloud-translate>=3.15,<4.0
+# Google OAuth + Play Store Validation
+google-auth>=2.29,<3.0
+google-api-python-client>=2.100,<3.0
 
 # Environment
 python-decouple>=3.8,<4.0
 
-# Monitoring
-sentry-sdk[django,celery]>=2.0,<3.0
-
-# HTTP Client (API Bible proxy)
+# HTTP Client
 requests>=2.31,<3.0
 
 # Utilities

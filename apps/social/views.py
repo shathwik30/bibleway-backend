@@ -88,8 +88,15 @@ class PostViewSet(FeedViewSet):
     def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         author_id = request.query_params.get("author")
         if author_id:
+            try:
+                author_uuid = UUID(author_id)
+            except ValueError:
+                return Response(
+                    {"message": "Invalid author UUID.", "data": None},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             queryset = self._post_service.get_user_posts(
-                user_id=UUID(author_id),
+                user_id=author_uuid,
                 requesting_user=request.user,
             )
         else:
@@ -152,12 +159,15 @@ class PostViewSet(FeedViewSet):
 
         if reaction is None:
             return Response(
-                {"message": "Reaction removed."},
+                {"message": "Reaction removed.", "data": None},
                 status=status.HTTP_200_OK,
             )
 
         out = ReactionSerializer(reaction)
-        return Response(out.data, status=status.HTTP_201_CREATED)
+        return Response(
+            {"message": "Reaction added.", "data": out.data},
+            status=status.HTTP_201_CREATED,
+        )
 
     @action(detail=True, methods=["get", "post"], url_path="comments")
     def comments(self, request: Request, pk: UUID | None = None) -> Response:
@@ -249,8 +259,15 @@ class PrayerViewSet(FeedViewSet):
     def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         author_id = request.query_params.get("author")
         if author_id:
+            try:
+                author_uuid = UUID(author_id)
+            except ValueError:
+                return Response(
+                    {"message": "Invalid author UUID.", "data": None},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             queryset = self._prayer_service.get_user_prayers(
-                user_id=UUID(author_id),
+                user_id=author_uuid,
                 requesting_user=request.user,
             )
         else:
@@ -314,12 +331,15 @@ class PrayerViewSet(FeedViewSet):
 
         if reaction is None:
             return Response(
-                {"message": "Reaction removed."},
+                {"message": "Reaction removed.", "data": None},
                 status=status.HTTP_200_OK,
             )
 
         out = ReactionSerializer(reaction)
-        return Response(out.data, status=status.HTTP_201_CREATED)
+        return Response(
+            {"message": "Reaction added.", "data": out.data},
+            status=status.HTTP_201_CREATED,
+        )
 
     @action(detail=True, methods=["get", "post"], url_path="comments")
     def comments(self, request: Request, pk: UUID | None = None) -> Response:

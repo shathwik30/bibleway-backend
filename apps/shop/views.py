@@ -8,14 +8,13 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 
-from apps.common.exceptions import BadRequestError, ForbiddenError, NotFoundError
+from apps.common.exceptions import BadRequestError, ForbiddenError
 from apps.common.throttles import PurchaseRateThrottle as PurchaseThrottle
 from apps.common.pagination import StandardPageNumberPagination
 from apps.common.views import BaseAPIView
 
 from .models import Purchase
 from .serializers import (
-    DownloadSerializer,
     ProductDetailSerializer,
     ProductListSerializer,
     PurchaseCreateSerializer,

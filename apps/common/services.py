@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any, Generic, Sequence
 from uuid import UUID
 
-from django.db import models
 from django.db.models import QuerySet
 
 from .exceptions import NotFoundError

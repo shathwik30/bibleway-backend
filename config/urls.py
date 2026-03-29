@@ -6,16 +6,25 @@ from django.urls import include, path
 
 def health_check(request):
     """Liveness probe for Railway and uptime monitors."""
-    from django.db import connection
+    from django.core.cache import cache
+    from django.db import OperationalError, connection
 
     try:
         with connection.cursor() as cursor:
             cursor.execute("SELECT 1")
         db_status = "ok"
-    except Exception:
+    except OperationalError:
         db_status = "error"
 
-    return JsonResponse({"status": "ok", "db": db_status})
+    try:
+        cache.set("_health", "1", timeout=5)
+        cache.get("_health")
+        cache_status = "ok"
+    except Exception:
+        cache_status = "error"
+
+    overall = "ok" if db_status == "ok" and cache_status == "ok" else "degraded"
+    return JsonResponse({"status": overall, "db": db_status, "cache": cache_status})
 
 
 urlpatterns = [

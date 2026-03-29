@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import uuid
-from unittest.mock import patch, MagicMock
 
 import pytest
-from django.core.files.storage import FileSystemStorage
 from rest_framework.test import APIRequestFactory
 
 from apps.shop.models import Product, Purchase, Download

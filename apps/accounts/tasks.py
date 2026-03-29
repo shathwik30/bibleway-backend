@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import datetime
 import html
 import logging
 
 from celery import shared_task
+from django.utils import timezone
 
-logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=30)
@@ -48,4 +50,25 @@ def send_otp_email_task(
 
     except Exception as exc:
         logger.exception("Failed to send OTP email to %s: %s", user_email, exc)
+        raise self.retry(exc=exc)
+
+
+@shared_task(bind=True, max_retries=1, default_retry_delay=60)
+def cleanup_expired_otps(self) -> int:
+    """Delete OTP tokens that are expired and used, or expired for over 24 hours.
+
+    Should be scheduled to run daily via Celery Beat.
+    """
+    try:
+        from apps.accounts.models import OTPToken
+
+        cutoff: datetime.datetime = timezone.now() - datetime.timedelta(hours=24)
+        deleted_count: int
+        deleted_count, _ = OTPToken.objects.filter(
+            expires_at__lt=cutoff,
+        ).delete()
+        logger.info("Cleaned up %d expired OTP tokens.", deleted_count)
+        return deleted_count
+    except Exception as exc:
+        logger.exception("cleanup_expired_otps task failed: %s", exc)
         raise self.retry(exc=exc)

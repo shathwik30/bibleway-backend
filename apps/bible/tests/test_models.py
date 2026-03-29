@@ -9,7 +9,6 @@ Covers:
 
 from __future__ import annotations
 
-import uuid
 
 import pytest
 from django.contrib.contenttypes.models import ContentType
@@ -511,7 +510,7 @@ class TestNote:
 
     def test_ordering_newest_first(self, user):
         """Notes are ordered by -created_at."""
-        n1 = Note.objects.create(
+        Note.objects.create(
             user=user, note_type="api_bible", verse_reference="A", text="1",
         )
         n2 = Note.objects.create(

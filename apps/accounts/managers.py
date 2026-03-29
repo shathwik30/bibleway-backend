@@ -1,10 +1,14 @@
+from __future__ import annotations
+
+from typing import Any
+
 from django.contrib.auth.models import BaseUserManager
 
 
 class CustomUserManager(BaseUserManager):
     """Custom user manager where email is the unique identifier."""
 
-    def create_user(self, email, password=None, **extra_fields):
+    def create_user(self, email: str, password: str | None = None, **extra_fields: Any) -> Any:
         if not email:
             raise ValueError("The Email field is required.")
         email = self.normalize_email(email)
@@ -16,7 +20,7 @@ class CustomUserManager(BaseUserManager):
         user.save(using=self._db)
         return user
 
-    def create_superuser(self, email, password=None, **extra_fields):
+    def create_superuser(self, email: str, password: str | None = None, **extra_fields: Any) -> Any:
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
 

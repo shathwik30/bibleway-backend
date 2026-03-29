@@ -34,6 +34,11 @@ urlpatterns = [
         views.PageDetailView.as_view(),
         name="page-detail",
     ),
+    path(
+        "pages/<uuid:page_id>/comments/",
+        views.PageCommentCreateView.as_view(),
+        name="page-comment-create",
+    ),
     # Search
     path(
         "search/",

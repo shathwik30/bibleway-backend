@@ -176,7 +176,7 @@ class TestSegregatedBibleService:
         self, bible_service, section, db,
     ):
         """When user_age is provided, matching section is prioritized."""
-        other = SegregatedSection.objects.create(
+        SegregatedSection.objects.create(
             title="Teens", age_min=13, age_max=17, order=1, is_active=True,
         )
         qs = bible_service.get_sections(user_age=7)

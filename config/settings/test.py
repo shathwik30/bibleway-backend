@@ -157,6 +157,8 @@ GOOGLE_TRANSLATE_API_KEY = "test-translate-key"
 APPLE_SHARED_SECRET = "test-apple-secret"
 APPLE_BUNDLE_ID = "com.bibleway.test"
 ANDROID_PACKAGE_NAME = "com.bibleway.test"
+GOOGLE_PLAY_CREDENTIALS = None
+GOOGLE_OAUTH_CLIENT_IDS = ["test-google-client-id.apps.googleusercontent.com"]
 
 # ── UploadThing (dummy for tests) ──────────────────────────────
 UPLOADTHING_TOKEN = "test-token"

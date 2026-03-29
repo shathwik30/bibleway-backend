@@ -37,7 +37,7 @@ class UserAdmin(BaseUserAdmin):
         ),
         (
             "Profile",
-            {"fields": ("profile_photo", "bio", "account_visibility", "hide_followers_list")},
+            {"fields": ("profile_photo", "bio")},
         ),
         (
             "Permissions",
@@ -75,8 +75,7 @@ class UserAdmin(BaseUserAdmin):
 
 @admin.register(FollowRelationship)
 class FollowRelationshipAdmin(admin.ModelAdmin):
-    list_display = ["follower", "following", "status", "created_at"]
-    list_filter = ["status"]
+    list_display = ["follower", "following", "created_at"]
     search_fields = ["follower__email", "following__email"]
     readonly_fields = ["id", "created_at"]
 

@@ -40,6 +40,23 @@ class BaseAPIView(APIView):
     def no_content_response(self) -> Response:
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    def paginated_response(
+        self,
+        queryset: Any,
+        serializer_class: type,
+        request: Request,
+    ) -> Response:
+        """Paginate a queryset and return a standard response."""
+        paginator: StandardPageNumberPagination = self.pagination_class()
+        page: Any = paginator.paginate_queryset(queryset, request, view=self)
+
+        if page is not None:
+            serializer = serializer_class(page, many=True)
+            return paginator.get_paginated_response(serializer.data)
+
+        serializer = serializer_class(queryset, many=True)
+        return self.success_response(data=serializer.data)
+
 
 class BaseModelViewSet(ModelViewSet):
     """Base viewset with standard pagination and permissions."""

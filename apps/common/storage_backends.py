@@ -29,7 +29,8 @@ def _extract_api_key(token: str) -> str:
         payload_b64 += "=" * (4 - len(payload_b64) % 4)
         payload = json.loads(base64.urlsafe_b64decode(payload_b64))
         return payload.get("apiKey", token)
-    except Exception:
+    except (json.JSONDecodeError, KeyError, IndexError, ValueError):
+        logger.warning("Could not parse UploadThing token as JWT, using raw value")
         return token
 
 

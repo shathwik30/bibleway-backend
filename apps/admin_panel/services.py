@@ -23,6 +23,7 @@ from apps.analytics.models import BoostAnalyticSnapshot, PostBoost, PostView
 from apps.bible.models import (
     SegregatedChapter,
     SegregatedPage,
+    SegregatedPageComment,
     SegregatedSection,
     TranslatedPageCache,
 )
@@ -201,11 +202,9 @@ class AdminUserService:
             "prayers_count": Prayer.objects.filter(author=user).count(),
             "followers_count": FollowRelationship.objects.filter(
                 following=user,
-                status=FollowRelationship.Status.ACCEPTED,
             ).count(),
             "following_count": FollowRelationship.objects.filter(
                 follower=user,
-                status=FollowRelationship.Status.ACCEPTED,
             ).count(),
         }
 
@@ -1041,6 +1040,63 @@ class AdminBibleService:
             target_model="bible.SegregatedPage",
             target_id=page_id,
             detail=f"Page deleted: {title}.",
+        )
+
+
+    @staticmethod
+    def list_page_comments(
+        page_id: UUID | None = None,
+    ) -> QuerySet[SegregatedPageComment]:
+        """Return page comments, optionally filtered by page."""
+        qs: QuerySet[SegregatedPageComment] = (
+            SegregatedPageComment.objects.select_related(
+                "user", "page", "page__chapter", "page__chapter__section",
+            ).order_by("-created_at")
+        )
+        if page_id is not None:
+            qs = qs.filter(page_id=page_id)
+        return qs
+
+    @staticmethod
+    @transaction.atomic
+    def delete_page_comment(admin_user: User, comment_id: UUID) -> None:
+        """Delete a page comment and log the action."""
+        from apps.common.exceptions import NotFoundError
+
+        try:
+            comment: SegregatedPageComment = SegregatedPageComment.objects.get(
+                pk=comment_id,
+            )
+        except SegregatedPageComment.DoesNotExist:
+            raise NotFoundError(detail=f"Comment with id '{comment_id}' not found.")
+
+        comment.delete()
+
+        AdminLogService.log_action(
+            admin_user=admin_user,
+            action=AdminLog.ActionType.DELETE,
+            target_model="bible.SegregatedPageComment",
+            target_id=comment_id,
+            detail="Page comment deleted.",
+        )
+
+    @staticmethod
+    def get_page_like_stats() -> list[dict[str, Any]]:
+        """Return like counts per page with breadcrumb titles."""
+        return list(
+            SegregatedPage.objects.filter(
+                likes__isnull=False,
+            )
+            .values("id", "title", "chapter__title", "chapter__section__title")
+            .annotate(like_count=Count("likes"))
+            .order_by("-like_count")
+            .values(
+                page_id=F("id"),
+                page_title=F("title"),
+                chapter_title=F("chapter__title"),
+                section_title=F("chapter__section__title"),
+                like_count=F("like_count"),
+            )
         )
 
 

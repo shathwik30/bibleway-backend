@@ -8,10 +8,9 @@ from unittest.mock import patch
 import pytest
 from rest_framework import status
 
-from apps.shop.models import Download, Product, Purchase
+from apps.shop.models import Download, Purchase
 
 from conftest import (
-    DownloadFactory,
     ProductFactory,
     PurchaseFactory,
     UserFactory,

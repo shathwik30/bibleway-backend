@@ -16,7 +16,6 @@ from apps.common.pagination import StandardPageNumberPagination
 from apps.common.permissions import IsOwner
 from apps.common.views import BaseAPIView, BaseModelViewSet
 
-from .models import Bookmark, Highlight, Note
 from .serializers import (
     BookmarkCreateSerializer,
     BookmarkSerializer,
@@ -25,12 +24,13 @@ from .serializers import (
     NoteCreateSerializer,
     NoteSerializer,
     NoteUpdateSerializer,
+    PageCommentCreateSerializer,
     SegregatedChapterListSerializer,
     SegregatedPageDetailSerializer,
     SegregatedPageListSerializer,
     SegregatedSectionListSerializer,
-    TranslatedPageSerializer,
 )
+from .models import SegregatedPageComment
 from .services import (
     BibleTranslationService,
     BookmarkService,
@@ -112,6 +112,28 @@ class PageDetailView(BaseAPIView):
         page = service.get_page_detail(page_id, language_code=language_code)
         serializer = SegregatedPageDetailSerializer(page)
         return self.success_response(data=serializer.data)
+
+
+class PageCommentCreateView(BaseAPIView):
+    """POST /bible/pages/<page_id>/comments/"""
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._bible_service = SegregatedBibleService()
+
+    def post(self, request: Request, page_id: UUID) -> Response:
+        serializer: PageCommentCreateSerializer = PageCommentCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        page = self._bible_service.get_page_detail(page_id)
+
+        SegregatedPageComment.objects.create(
+            user=request.user,
+            page=page,
+            content=serializer.validated_data["content"],
+        )
+
+        return self.created_response(message="Comment submitted.")
 
 
 class BibleSearchView(BaseAPIView):

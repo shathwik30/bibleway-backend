@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.db import models
 from django.utils import timezone
@@ -6,9 +8,10 @@ from apps.common.models import CreatedAtModel, UUIDModel
 from apps.common.validators import validate_bio_length
 
 from .managers import CustomUserManager
+from .validators import calculate_age
 
 
-def profile_photo_upload_path(instance, filename):
+def profile_photo_upload_path(instance: User, filename: str) -> str:
     return f"profiles/{instance.id}/{filename}"
 
 
@@ -20,11 +23,6 @@ class User(AbstractBaseUser, PermissionsMixin, UUIDModel):
         FEMALE = "female", "Female"
         PREFER_NOT_TO_SAY = "prefer_not_to_say", "Prefer Not to Say"
 
-    class AccountVisibility(models.TextChoices):
-        PUBLIC = "public", "Public"
-        PRIVATE = "private", "Private"
-
-    # ── Core fields ─────────────────────────────────────────────
     email = models.EmailField(
         unique=True,
         max_length=255,
@@ -41,7 +39,6 @@ class User(AbstractBaseUser, PermissionsMixin, UUIDModel):
     country = models.CharField(max_length=100)
     phone_number = models.CharField(max_length=20, blank=True, default="")
 
-    # ── Profile fields ──────────────────────────────────────────
     profile_photo = models.ImageField(
         upload_to=profile_photo_upload_path,
         blank=True,
@@ -53,14 +50,6 @@ class User(AbstractBaseUser, PermissionsMixin, UUIDModel):
         default="",
         validators=[validate_bio_length],
     )
-    account_visibility = models.CharField(
-        max_length=10,
-        choices=AccountVisibility.choices,
-        default=AccountVisibility.PUBLIC,
-    )
-    hide_followers_list = models.BooleanField(default=False)
-
-    # ── Django auth fields ──────────────────────────────────────
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     is_email_verified = models.BooleanField(default=False)
@@ -68,8 +57,8 @@ class User(AbstractBaseUser, PermissionsMixin, UUIDModel):
 
     objects = CustomUserManager()
 
-    USERNAME_FIELD = "email"
-    REQUIRED_FIELDS = ["full_name", "date_of_birth", "gender"]
+    USERNAME_FIELD: str = "email"
+    REQUIRED_FIELDS: list[str] = ["full_name", "date_of_birth", "gender"]
 
     class Meta:
         verbose_name = "user"
@@ -79,26 +68,20 @@ class User(AbstractBaseUser, PermissionsMixin, UUIDModel):
             models.Index(fields=["country"]),
             models.Index(fields=["preferred_language"]),
             models.Index(fields=["date_of_birth"]),
+            models.Index(fields=["is_active"]),
+            models.Index(fields=["is_email_verified"]),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.full_name} ({self.email})"
 
     @property
-    def age(self):
-        today = timezone.now().date()
-        born = self.date_of_birth
-        return today.year - born.year - (
-            (today.month, today.day) < (born.month, born.day)
-        )
+    def age(self) -> int:
+        return calculate_age(self.date_of_birth)
 
 
 class FollowRelationship(CreatedAtModel):
-    """Asymmetric follow. Pending status if target account is private."""
-
-    class Status(models.TextChoices):
-        ACCEPTED = "accepted", "Accepted"
-        PENDING = "pending", "Pending"
+    """Asymmetric follow. All follows are immediate."""
 
     follower = models.ForeignKey(
         User,
@@ -109,11 +92,6 @@ class FollowRelationship(CreatedAtModel):
         User,
         on_delete=models.CASCADE,
         related_name="follower_relationships",
-    )
-    status = models.CharField(
-        max_length=10,
-        choices=Status.choices,
-        default=Status.ACCEPTED,
     )
 
     class Meta:
@@ -131,12 +109,12 @@ class FollowRelationship(CreatedAtModel):
             ),
         ]
         indexes = [
-            models.Index(fields=["follower", "status"]),
-            models.Index(fields=["following", "status"]),
+            models.Index(fields=["follower"]),
+            models.Index(fields=["following"]),
         ]
 
-    def __str__(self):
-        return f"{self.follower} → {self.following} ({self.status})"
+    def __str__(self) -> str:
+        return f"{self.follower} → {self.following}"
 
 
 class BlockRelationship(CreatedAtModel):
@@ -172,14 +150,14 @@ class BlockRelationship(CreatedAtModel):
             models.Index(fields=["blocked"]),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.blocker} blocked {self.blocked}"
 
 
 class OTPToken(CreatedAtModel):
     """Time-limited OTP for email verification and password reset."""
 
-    MAX_ATTEMPTS = 5
+    MAX_ATTEMPTS: int = 5
 
     class Purpose(models.TextChoices):
         REGISTER = "register", "Register"
@@ -205,13 +183,13 @@ class OTPToken(CreatedAtModel):
             models.Index(fields=["expires_at"]),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"OTP for {self.user.email} ({self.purpose})"
 
     @property
-    def is_expired(self):
+    def is_expired(self) -> bool:
         return timezone.now() > self.expires_at
 
     @property
-    def is_max_attempts(self):
+    def is_max_attempts(self) -> bool:
         return self.attempts >= self.MAX_ATTEMPTS

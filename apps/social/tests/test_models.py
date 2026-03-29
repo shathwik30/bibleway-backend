@@ -21,11 +21,8 @@ from apps.social.models import (
 
 # Import factories from root conftest (available via pytest auto-discovery).
 from conftest import (
-    CommentFactory,
     PostFactory,
     PrayerFactory,
-    ReactionFactory,
-    ReplyFactory,
     ReportFactory,
     UserFactory,
 )

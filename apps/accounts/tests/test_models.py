@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import datetime
-from unittest.mock import patch
 
 import pytest
 from django.db import IntegrityError
@@ -21,11 +20,6 @@ from conftest import (
     OTPTokenFactory,
     UserFactory,
 )
-
-
-# ────────────────────────────────────────────────────────────────
-# CustomUserManager
-# ────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -57,7 +51,6 @@ class TestCustomUserManager:
             gender="female",
             country="US",
         )
-        # Django's normalize_email lowercases the domain part
         assert user.email == "Test@example.com"
 
     def test_create_user_without_email_raises_value_error(self):
@@ -139,11 +132,6 @@ class TestCustomUserManager:
             )
 
 
-# ────────────────────────────────────────────────────────────────
-# User model
-# ────────────────────────────────────────────────────────────────
-
-
 @pytest.mark.django_db
 class TestUserModel:
     """Tests for the User model fields, properties, and constraints."""
@@ -163,8 +151,6 @@ class TestUserModel:
     def test_default_values(self):
         user = UserFactory()
         assert user.preferred_language == "en"
-        assert user.account_visibility == User.AccountVisibility.PUBLIC
-        assert user.hide_followers_list is False
         assert user.is_active is True
         assert user.is_staff is False
         assert user.bio == ""
@@ -179,7 +165,6 @@ class TestUserModel:
     def test_age_property_birthday_not_yet(self):
         """Test age when birthday has not occurred this year yet."""
         today = timezone.now().date()
-        # Set birthday to tomorrow's month/day, 25 years ago
         future_day = today + datetime.timedelta(days=30)
         dob = future_day.replace(year=future_day.year - 25)
         user = UserFactory(date_of_birth=dob)
@@ -191,42 +176,26 @@ class TestUserModel:
         assert "female" in choices
         assert "prefer_not_to_say" in choices
 
-    def test_account_visibility_choices(self):
-        choices = [c[0] for c in User.AccountVisibility.choices]
-        assert "public" in choices
-        assert "private" in choices
-
     def test_uuid_primary_key(self):
         user = UserFactory()
         assert user.pk is not None
-        # UUID has 32 hex chars + 4 hyphens = 36 chars
         assert len(str(user.pk)) == 36
 
     def test_ordering_by_date_joined_desc(self):
         assert User._meta.ordering == ["-date_joined"]
 
 
-# ────────────────────────────────────────────────────────────────
-# FollowRelationship model
-# ────────────────────────────────────────────────────────────────
-
-
 @pytest.mark.django_db
 class TestFollowRelationshipModel:
     """Tests for the FollowRelationship model constraints and behavior."""
 
-    def test_create_follow_accepted(self):
-        rel = FollowRelationshipFactory(status="accepted")
-        assert rel.status == FollowRelationship.Status.ACCEPTED
+    def test_create_follow(self):
+        rel = FollowRelationshipFactory()
         assert rel.follower != rel.following
 
-    def test_create_follow_pending(self):
-        rel = FollowRelationshipFactory(status="pending")
-        assert rel.status == FollowRelationship.Status.PENDING
-
     def test_str_representation(self):
-        rel = FollowRelationshipFactory(status="accepted")
-        expected = f"{rel.follower} \u2192 {rel.following} (accepted)"
+        rel = FollowRelationshipFactory()
+        expected = f"{rel.follower} \u2192 {rel.following}"
         assert str(rel) == expected
 
     def test_unique_follow_constraint(self):
@@ -240,7 +209,7 @@ class TestFollowRelationshipModel:
         user = UserFactory()
         with pytest.raises(IntegrityError):
             FollowRelationship.objects.create(
-                follower=user, following=user, status="accepted"
+                follower=user, following=user,
             )
 
     def test_ordering_by_created_at_desc(self):
@@ -265,11 +234,6 @@ class TestFollowRelationshipModel:
         following_id = rel.following.id
         rel.following.delete()
         assert FollowRelationship.objects.filter(following_id=following_id).count() == 0
-
-
-# ────────────────────────────────────────────────────────────────
-# BlockRelationship model
-# ────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -340,14 +304,8 @@ class TestBlockRelationshipModel:
         user_a = UserFactory()
         user_b = UserFactory()
         BlockRelationshipFactory(blocker=user_a, blocked=user_b)
-        # Reverse direction should be allowed
         BlockRelationshipFactory(blocker=user_b, blocked=user_a)
         assert BlockRelationship.objects.count() == 2
-
-
-# ────────────────────────────────────────────────────────────────
-# OTPToken model
-# ────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db

@@ -1,3 +1,4 @@
+import json as _json
 from datetime import timedelta
 from pathlib import Path
 
@@ -73,14 +74,20 @@ WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
 # ── Database (Neon PostgreSQL) ──────────────────────────────────
+# Neon uses PgBouncer for connection pooling on the "-pooler" endpoint.
+# conn_max_age=0 lets PgBouncer manage connection lifecycle and avoids
+# stale-connection errors from serverless cold starts.
 
 DATABASES = {
     "default": dj_database_url.parse(
         config("DATABASE_URL"),
-        conn_max_age=600,
+        conn_max_age=0,
         conn_health_checks=True,
+        ssl_require=True,
     )
 }
+DATABASES["default"]["OPTIONS"] = DATABASES["default"].get("OPTIONS", {})
+DATABASES["default"]["OPTIONS"]["connect_timeout"] = 10
 
 # ── REST Framework ──────────────────────────────────────────────
 
@@ -125,9 +132,20 @@ SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
-# ── Redis URL ──────────────────────────────────────────────────
+# ── Redis / Upstash ───────────────────────────────────────────
+# Upstash Redis uses TLS (rediss:// protocol). All clients (cache,
+# Celery, Channels) need ssl_cert_reqs=CERT_NONE because Upstash
+# does not provide a CA bundle for client verification.
+
+import ssl as _ssl  # noqa: E402
 
 _REDIS_URL = config("UPSTASH_REDIS_URL", default="")
+
+_UPSTASH_SSL_OPTS = {}
+if _REDIS_URL.startswith("rediss://"):
+    _UPSTASH_SSL_OPTS = {
+        "ssl_cert_reqs": _ssl.CERT_NONE,
+    }
 
 # ── Channel Layers (Django Channels + Upstash Redis) ───────────
 
@@ -136,7 +154,10 @@ if _REDIS_URL:
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
             "CONFIG": {
-                "hosts": [_REDIS_URL],
+                "hosts": [{
+                    "address": _REDIS_URL,
+                    **_UPSTASH_SSL_OPTS,
+                }],
             },
         },
     }
@@ -156,6 +177,10 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "UTC"
 
+if _UPSTASH_SSL_OPTS:
+    CELERY_BROKER_USE_SSL = _UPSTASH_SSL_OPTS
+    CELERY_REDIS_BACKEND_USE_SSL = _UPSTASH_SSL_OPTS
+
 CELERY_BEAT_SCHEDULE = {
     "deactivate-expired-boosts": {
         "task": "apps.analytics.tasks.deactivate_expired_boosts",
@@ -174,6 +199,7 @@ if _REDIS_URL:
         "default": {
             "BACKEND": "django.core.cache.backends.redis.RedisCache",
             "LOCATION": _REDIS_URL,
+            "OPTIONS": _UPSTASH_SSL_OPTS if _UPSTASH_SSL_OPTS else {},
         },
     }
 else:
@@ -257,12 +283,27 @@ USE_TZ = True
 API_BIBLE_KEY = config("API_BIBLE_KEY", default="")
 RESEND_API_KEY = config("RESEND_API_KEY", default="")
 GOOGLE_TRANSLATE_API_KEY = config("GOOGLE_TRANSLATE_API_KEY", default="")
+GOOGLE_OAUTH_CLIENT_IDS = [
+    cid.strip()
+    for cid in config("GOOGLE_OAUTH_CLIENT_IDS", default="").split(",")
+    if cid.strip()
+]
 
 # ── In-App Purchase Verification ────────────────────────────────
 
 APPLE_SHARED_SECRET = config("APPLE_SHARED_SECRET", default="")
 APPLE_BUNDLE_ID = config("APPLE_BUNDLE_ID", default="com.bibleway.app")
 ANDROID_PACKAGE_NAME = config("ANDROID_PACKAGE_NAME", default="com.bibleway.app")
+
+def _parse_json_setting(raw: str) -> dict | None:
+    if not raw or not raw.strip().startswith("{"):
+        return None
+    try:
+        return _json.loads(raw)
+    except _json.JSONDecodeError:
+        return None
+
+GOOGLE_PLAY_CREDENTIALS = _parse_json_setting(config("GOOGLE_PLAY_CREDENTIALS_JSON", default=""))
 
 # ── Default PK ──────────────────────────────────────────────────
 
