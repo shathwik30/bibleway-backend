@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 from uuid import UUID
 
@@ -21,14 +22,10 @@ from django.db.models import (
 )
 from django.db.models.functions import Coalesce
 
-import logging
-
 from apps.accounts.models import User
 from apps.common.exceptions import BadRequestError, ForbiddenError, NotFoundError
 from apps.common.services import BaseService
 from apps.common.utils import build_notification_data, get_blocked_user_ids
-
-logger = logging.getLogger(__name__)
 
 from .models import (
     Comment,
@@ -41,6 +38,8 @@ from .models import (
     Report,
 )
 from .validators import validate_media_constraints
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------

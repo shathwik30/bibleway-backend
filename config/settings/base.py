@@ -1,4 +1,5 @@
 import json as _json
+import ssl as _ssl
 from datetime import timedelta
 from pathlib import Path
 
@@ -136,8 +137,6 @@ SIMPLE_JWT = {
 # Upstash Redis uses TLS (rediss:// protocol). All clients (cache,
 # Celery, Channels) need ssl_cert_reqs=CERT_NONE because Upstash
 # does not provide a CA bundle for client verification.
-
-import ssl as _ssl  # noqa: E402
 
 _REDIS_URL = config("UPSTASH_REDIS_URL", default="")
 
