@@ -189,6 +189,14 @@ class TestDeviceTokenDeregisterView:
         response = auth_client.post(self.url, {"token": "no-such-token"})
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
+    def test_deregister_other_users_token_returns_404(self, auth_client, user, user2):
+        from conftest import DevicePushTokenFactory
+
+        DevicePushTokenFactory(user=user2, token="belongs-to-someone-else", is_active=True)
+
+        response = auth_client.post(self.url, {"token": "belongs-to-someone-else"})
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+
     def test_deregister_missing_token_returns_400(self, auth_client, user):
         response = auth_client.post(self.url, {})
         assert response.status_code == status.HTTP_400_BAD_REQUEST

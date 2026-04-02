@@ -240,13 +240,28 @@ class TestDevicePushTokenServiceDeactivate:
         self.service.register_token(
             user_id=user.id, token="deactivate-me", platform="ios"
         )
-        self.service.deactivate_token(token="deactivate-me")
+        self.service.deactivate_token(user_id=user.id, token="deactivate-me")
         token = DevicePushToken.objects.get(token="deactivate-me")
         assert token.is_active is False
 
-    def test_deactivate_nonexistent_raises(self):
+    def test_deactivate_other_users_token_raises(self, user, user2):
+        self.service.register_token(
+            user_id=user2.id, token="belongs-to-user2", platform="ios"
+        )
         with pytest.raises(NotFoundError, match="not found"):
-            self.service.deactivate_token(token="nonexistent-token")
+            self.service.deactivate_token(
+                user_id=user.id,
+                token="belongs-to-user2",
+            )
+        token = DevicePushToken.objects.get(token="belongs-to-user2")
+        assert token.is_active is True
+
+    def test_deactivate_nonexistent_raises(self, user):
+        with pytest.raises(NotFoundError, match="not found"):
+            self.service.deactivate_token(
+                user_id=user.id,
+                token="nonexistent-token",
+            )
 
 
 @pytest.mark.django_db

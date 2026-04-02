@@ -1,5 +1,15 @@
 from .base import *  # noqa: F401, F403
 
+
+def _build_csrf_trusted_origins(origins: list[str]) -> list[str]:
+    """Return trusted CSRF origins derived from configured frontend origins."""
+    trusted = {"https://*.up.railway.app"}
+    for origin in origins:
+        if origin.startswith(("http://", "https://")):
+            trusted.add(origin)
+    return sorted(trusted)
+
+
 DEBUG = False
 
 CORS_ALLOW_ALL_ORIGINS = False
@@ -8,7 +18,7 @@ CORS_ALLOWED_ORIGINS = config(  # noqa: F405
     default="https://bibleway.io",
     cast=lambda v: [s.strip() for s in v.split(",") if s.strip()],
 )
-CSRF_TRUSTED_ORIGINS = ["https://*.up.railway.app"]
+CSRF_TRUSTED_ORIGINS = _build_csrf_trusted_origins(CORS_ALLOWED_ORIGINS)
 
 SECURE_SSL_REDIRECT = True
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

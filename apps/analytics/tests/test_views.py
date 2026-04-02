@@ -257,21 +257,16 @@ class TestPostBoostCreateView:
         post = PostFactory(author=user)
         txn_id = f"boost_{uuid.uuid4().hex[:16]}"
 
-        # The service catches ValueError and re-raises as DRF ValidationError.
-        try:
-            response = auth_client.post(self.url, {
-                "post_id": str(post.pk),
-                "tier": "boost_tier_1",
-                "platform": "ios",
-                "receipt_data": "bad-receipt",
-                "transaction_id": txn_id,
-                "duration_days": 7,
-            })
-            assert response.status_code == status.HTTP_400_BAD_REQUEST
-        except AttributeError:
-            # Known issue: custom_exception_handler cannot handle list-type
-            # response.data from DRF's ValidationError
-            pass
+        response = auth_client.post(self.url, {
+            "post_id": str(post.pk),
+            "tier": "boost_tier_1",
+            "platform": "ios",
+            "receipt_data": "bad-receipt",
+            "transaction_id": txn_id,
+            "duration_days": 7,
+        })
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.data["message"] == "Receipt validation failed: Invalid receipt"
         assert not PostBoost.objects.filter(transaction_id=txn_id).exists()
 
     @patch("apps.analytics.services.validate_apple_receipt")

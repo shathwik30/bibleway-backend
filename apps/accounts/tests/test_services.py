@@ -78,13 +78,7 @@ class TestOTPService:
             )
 
     def test_verify_otp_increments_attempts_on_failure(self):
-        """Verify that a failed OTP attempt raises BadRequestError.
-
-        Note: The @transaction.atomic decorator on verify_otp causes the
-        attempt increment to be rolled back when BadRequestError is raised,
-        so the DB value stays at 0. The error message still reports the
-        correct remaining count based on the in-memory state.
-        """
+        """Failed OTP attempts must persist so rate limits are enforceable."""
         user = UserFactory()
         self.service.create_otp(user=user, purpose=OTPToken.Purpose.REGISTER)
 
@@ -92,6 +86,8 @@ class TestOTPService:
             self.service.verify_otp(
                 user=user, plain_code="000000", purpose=OTPToken.Purpose.REGISTER
             )
+        token = OTPToken.objects.get(user=user, purpose="register", used=False)
+        assert token.attempts == 1
 
     def test_verify_otp_shows_remaining_attempts(self):
         user = UserFactory()
@@ -110,6 +106,23 @@ class TestOTPService:
             attempts=OTPToken.MAX_ATTEMPTS
         )
 
+        with pytest.raises(BadRequestError, match="Maximum verification attempts"):
+            self.service.verify_otp(
+                user=user, plain_code=code, purpose=OTPToken.Purpose.REGISTER
+            )
+
+    def test_verify_otp_locks_after_final_failed_attempt(self):
+        user = UserFactory()
+        code = self.service.create_otp(user=user, purpose=OTPToken.Purpose.REGISTER)
+
+        OTPToken.objects.filter(user=user, purpose="register", used=False).update(
+            attempts=OTPToken.MAX_ATTEMPTS - 1
+        )
+
+        with pytest.raises(BadRequestError, match="0 attempt\\(s\\) remaining"):
+            self.service.verify_otp(
+                user=user, plain_code="000000", purpose=OTPToken.Purpose.REGISTER
+            )
         with pytest.raises(BadRequestError, match="Maximum verification attempts"):
             self.service.verify_otp(
                 user=user, plain_code=code, purpose=OTPToken.Purpose.REGISTER

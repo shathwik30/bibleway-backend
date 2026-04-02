@@ -16,6 +16,16 @@ class BaseAPIView(APIView):
     """Base API view with standard permission and response helpers."""
 
     permission_classes = [IsAuthenticated]
+    pagination_class = StandardPageNumberPagination
+
+    def get_serializer_context(self, request: Request) -> dict[str, Any]:
+        """Provide a consistent serializer context for APIView-based endpoints."""
+        user = request.user if getattr(request, "user", None) and request.user.is_authenticated else None
+        return {
+            "request": request,
+            "user": user,
+            "view": self,
+        }
 
     def success_response(
         self,
@@ -49,12 +59,13 @@ class BaseAPIView(APIView):
         """Paginate a queryset and return a standard response."""
         paginator: StandardPageNumberPagination = self.pagination_class()
         page: Any = paginator.paginate_queryset(queryset, request, view=self)
+        context = self.get_serializer_context(request)
 
         if page is not None:
-            serializer = serializer_class(page, many=True)
+            serializer = serializer_class(page, many=True, context=context)
             return paginator.get_paginated_response(serializer.data)
 
-        serializer = serializer_class(queryset, many=True)
+        serializer = serializer_class(queryset, many=True, context=context)
         return self.success_response(data=serializer.data)
 
 

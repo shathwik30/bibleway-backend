@@ -8,7 +8,6 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from apps.common.exceptions import ForbiddenError, NotFoundError
-from apps.common.pagination import StandardPageNumberPagination
 from apps.common.throttles import BoostRateThrottle
 from apps.common.views import BaseAPIView
 
@@ -148,15 +147,7 @@ class PostBoostListView(BaseAPIView):
             user_id=request.user.id,
             active_only=active_only,
         )
-
-        paginator = StandardPageNumberPagination()
-        page = paginator.paginate_queryset(boosts, request, view=self)
-        if page is not None:
-            serializer = PostBoostSerializer(page, many=True)
-            return paginator.get_paginated_response(serializer.data)
-
-        serializer = PostBoostSerializer(boosts, many=True)
-        return self.success_response(data=serializer.data)
+        return self.paginated_response(boosts, PostBoostSerializer, request)
 
 
 class BoostAnalyticsView(BaseAPIView):
@@ -181,12 +172,8 @@ class BoostAnalyticsView(BaseAPIView):
             )
 
         snapshots = self._boost_service.get_boost_analytics(boost_id=boost_id)
-
-        paginator = StandardPageNumberPagination()
-        page = paginator.paginate_queryset(snapshots, request, view=self)
-        if page is not None:
-            serializer = BoostAnalyticSnapshotSerializer(page, many=True)
-            return paginator.get_paginated_response(serializer.data)
-
-        serializer = BoostAnalyticSnapshotSerializer(snapshots, many=True)
-        return self.success_response(data=serializer.data)
+        return self.paginated_response(
+            snapshots,
+            BoostAnalyticSnapshotSerializer,
+            request,
+        )

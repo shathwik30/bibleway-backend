@@ -18,8 +18,7 @@ def health_check(request):
 
     try:
         cache.set("_health", "1", timeout=5)
-        cache.get("_health")
-        cache_status = "ok"
+        cache_status = "ok" if cache.get("_health") == "1" else "error"
     except Exception:
         cache_status = "error"
 

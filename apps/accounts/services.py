@@ -73,41 +73,43 @@ class OTPService(BaseService[OTPToken]):
         )
         return plain_code
 
-    @transaction.atomic
     def verify_otp(self, user: User, plain_code: str, purpose: str) -> OTPToken:
         """Verify an OTP code. Returns the token on success.
 
         Raises BadRequestError if the code is invalid, expired, or max attempts reached.
         Uses select_for_update to prevent TOCTOU race conditions.
         """
-        token: OTPToken | None = (
-            OTPToken.objects.select_for_update()
-            .filter(user=user, purpose=purpose, used=False)
-            .order_by("-created_at")
-            .first()
-        )
+        error_detail: str | None = None
 
-        if token is None:
-            raise BadRequestError(detail="No active OTP found. Please request a new one.")
-
-        if token.is_expired:
-            raise BadRequestError(detail="OTP has expired. Please request a new one.")
-
-        if token.is_max_attempts:
-            raise BadRequestError(
-                detail="Maximum verification attempts exceeded. Please request a new OTP."
+        with transaction.atomic():
+            token: OTPToken | None = (
+                OTPToken.objects.select_for_update()
+                .filter(user=user, purpose=purpose, used=False)
+                .order_by("-created_at")
+                .first()
             )
 
-        if not verify_otp(plain_code, token.hashed_code):
-            token.attempts += 1
-            token.save(update_fields=["attempts"])
-            remaining: int = OTPToken.MAX_ATTEMPTS - token.attempts
-            raise BadRequestError(
-                detail=f"Invalid OTP code. {remaining} attempt(s) remaining."
-            )
+            if token is None:
+                error_detail = "No active OTP found. Please request a new one."
+            elif token.is_expired:
+                error_detail = "OTP has expired. Please request a new one."
+            elif token.is_max_attempts:
+                error_detail = (
+                    "Maximum verification attempts exceeded. Please request a new OTP."
+                )
+            elif not verify_otp(plain_code, token.hashed_code):
+                token.attempts += 1
+                token.save(update_fields=["attempts"])
+                remaining: int = max(OTPToken.MAX_ATTEMPTS - token.attempts, 0)
+                error_detail = (
+                    f"Invalid OTP code. {remaining} attempt(s) remaining."
+                )
+            else:
+                token.used = True
+                token.save(update_fields=["used"])
 
-        token.used = True
-        token.save(update_fields=["used"])
+        if error_detail is not None:
+            raise BadRequestError(detail=error_detail)
         return token
 
     def invalidate_user_otps(self, user: User, purpose: str) -> int:

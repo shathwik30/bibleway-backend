@@ -206,9 +206,12 @@ class DevicePushTokenService(BaseService[DevicePushToken]):
         )
         return device_token
 
-    def deactivate_token(self, *, token: str) -> None:
-        """Deactivate a push token (e.g., on logout or invalid token)."""
-        updated = DevicePushToken.objects.filter(token=token).update(is_active=False)
+    def deactivate_token(self, *, user_id: UUID, token: str) -> None:
+        """Deactivate one of the current user's push tokens."""
+        updated = DevicePushToken.objects.filter(
+            token=token,
+            user_id=user_id,
+        ).update(is_active=False)
         if updated == 0:
             raise NotFoundError(detail="Device token not found.")
 

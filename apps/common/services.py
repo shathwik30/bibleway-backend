@@ -71,17 +71,20 @@ class BaseService(Generic[ModelType]):
         """
         allowed = self.allowed_update_fields
         model_field_names = {f.name for f in instance._meta.get_fields()}
-        for field, value in kwargs.items():
-            if allowed and field not in allowed:
-                continue
-            if field not in model_field_names:
-                continue
+        update_data = {
+            field: value
+            for field, value in kwargs.items()
+            if field in model_field_names and (not allowed or field in allowed)
+        }
+
+        if not update_data:
+            return instance
+
+        for field, value in update_data.items():
             setattr(instance, field, value)
+
         instance.full_clean()
-        update_fields: list[str] = [
-            k for k in kwargs
-            if k in model_field_names and (not allowed or k in allowed)
-        ]
+        update_fields: list[str] = list(update_data.keys())
         if hasattr(instance, "updated_at"):
             update_fields.append("updated_at")
         instance.save(update_fields=update_fields)

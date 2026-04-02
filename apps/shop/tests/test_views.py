@@ -325,20 +325,14 @@ class TestPurchaseCreateView:
     def test_create_purchase_receipt_validation_failure(self, mock_validate, auth_client):
         mock_validate.side_effect = ValueError("Invalid receipt")
         product = ProductFactory(is_active=True, is_free=False)
-        # The service catches ValueError and re-raises as DRF ValidationError.
-        # The exception triggers the error path -- verify no purchase is created.
-        try:
-            response = auth_client.post(self.url, {
-                "product_id": str(product.pk),
-                "platform": "ios",
-                "receipt_data": "invalid-receipt",
-                "transaction_id": f"txn_{uuid.uuid4().hex[:16]}",
-            })
-            assert response.status_code == status.HTTP_400_BAD_REQUEST
-        except AttributeError:
-            # Known issue: custom_exception_handler cannot handle list-type
-            # response.data from DRF's ValidationError
-            pass
+        response = auth_client.post(self.url, {
+            "product_id": str(product.pk),
+            "platform": "ios",
+            "receipt_data": "invalid-receipt",
+            "transaction_id": f"txn_{uuid.uuid4().hex[:16]}",
+        })
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.data["message"] == "Receipt validation failed: Invalid receipt"
         assert not Purchase.objects.filter(product=product).exists()
 
     @patch("apps.shop.services.validate_apple_receipt")

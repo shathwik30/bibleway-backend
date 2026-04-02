@@ -5,6 +5,7 @@ import html
 import logging
 
 from celery import shared_task
+from django.db.models import Q
 from django.utils import timezone
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -62,10 +63,11 @@ def cleanup_expired_otps(self) -> int:
     try:
         from apps.accounts.models import OTPToken
 
+        now = timezone.now()
         cutoff: datetime.datetime = timezone.now() - datetime.timedelta(hours=24)
         deleted_count: int
         deleted_count, _ = OTPToken.objects.filter(
-            expires_at__lt=cutoff,
+            Q(used=True, expires_at__lt=now) | Q(expires_at__lt=cutoff),
         ).delete()
         logger.info("Cleaned up %d expired OTP tokens.", deleted_count)
         return deleted_count

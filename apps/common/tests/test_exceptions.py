@@ -79,13 +79,18 @@ class TestDictDetail:
 
 
 class TestListDetail:
+    def test_plain_list_detail_extracts_first(self):
+        exc = ValidationError(detail=["First error.", "Second error."])
+        response = custom_exception_handler(exc, _make_context())
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.data["message"] == "First error."
+        assert response.data["data"] is None
+
     def test_list_detail_extracts_first(self):
         """When ValidationError is given a list, DRF sets response.data to that list.
 
-        The handler reads response.data.get("detail", response.data) — since a list
-        has no .get(), the handler must still produce a valid envelope. DRF wraps a
-        list under the "non_field_errors" key when the detail is a plain list.
-        We test with a dict containing a list value instead, which is the typical case.
+        DRF often wraps list errors under ``non_field_errors``. The handler must
+        still normalize that response into the standard envelope.
         """
         exc = ValidationError(detail={"non_field_errors": ["First error.", "Second error."]})
         response = custom_exception_handler(exc, _make_context())

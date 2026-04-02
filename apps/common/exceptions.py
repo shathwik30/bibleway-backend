@@ -38,13 +38,12 @@ def custom_exception_handler(exc, context):
     """
     import logging
 
-
     logger = logging.getLogger("apps.common.exceptions")
 
     response = exception_handler(exc, context)
 
     if response is not None:
-        detail = response.data.get("detail", response.data)
+        detail = response.data.get("detail", response.data) if isinstance(response.data, dict) else response.data
         if isinstance(detail, list):
             message = detail[0] if detail else "An error occurred."
         elif isinstance(detail, dict):
@@ -52,7 +51,7 @@ def custom_exception_handler(exc, context):
             if isinstance(message, list):
                 message = message[0] if message else "An error occurred."
         else:
-            message = str(detail)
+            message = detail
         response.data = {"message": str(message), "data": None}
     else:
         # Unhandled exception -- return a safe generic 500 response

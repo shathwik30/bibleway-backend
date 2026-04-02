@@ -10,7 +10,6 @@ from rest_framework.throttling import UserRateThrottle
 
 from apps.common.exceptions import BadRequestError, ForbiddenError
 from apps.common.throttles import PurchaseRateThrottle as PurchaseThrottle
-from apps.common.pagination import StandardPageNumberPagination
 from apps.common.views import BaseAPIView
 
 from .models import Purchase
@@ -40,15 +39,7 @@ class ProductListView(BaseAPIView):
     def get(self, request: Request) -> Response:
         category: str | None = request.query_params.get("category")
         products = self._product_service.list_active_products(category=category)
-
-        paginator = StandardPageNumberPagination()
-        page = paginator.paginate_queryset(products, request, view=self)
-        if page is not None:
-            serializer = ProductListSerializer(page, many=True)
-            return paginator.get_paginated_response(serializer.data)
-
-        serializer = ProductListSerializer(products, many=True)
-        return self.success_response(data=serializer.data)
+        return self.paginated_response(products, ProductListSerializer, request)
 
 
 class ProductDetailView(BaseAPIView):
@@ -84,15 +75,7 @@ class ProductSearchView(BaseAPIView):
             raise BadRequestError(detail="Query parameter 'q' is required.")
 
         products = self._product_service.search_products(query=query)
-
-        paginator = StandardPageNumberPagination()
-        page = paginator.paginate_queryset(products, request, view=self)
-        if page is not None:
-            serializer = ProductListSerializer(page, many=True)
-            return paginator.get_paginated_response(serializer.data)
-
-        serializer = ProductListSerializer(products, many=True)
-        return self.success_response(data=serializer.data)
+        return self.paginated_response(products, ProductListSerializer, request)
 
 
 # ---------------------------------------------------------------------------
@@ -143,15 +126,7 @@ class PurchaseListView(BaseAPIView):
         purchases = self._purchase_service.list_user_purchases(
             user_id=request.user.id,
         )
-
-        paginator = StandardPageNumberPagination()
-        page = paginator.paginate_queryset(purchases, request, view=self)
-        if page is not None:
-            serializer = PurchaseSerializer(page, many=True)
-            return paginator.get_paginated_response(serializer.data)
-
-        serializer = PurchaseSerializer(purchases, many=True)
-        return self.success_response(data=serializer.data)
+        return self.paginated_response(purchases, PurchaseSerializer, request)
 
 
 # ---------------------------------------------------------------------------

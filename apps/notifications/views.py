@@ -7,7 +7,6 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from apps.common.pagination import StandardPageNumberPagination
 from apps.common.throttles import DeviceTokenRateThrottle
 from apps.common.views import BaseAPIView
 
@@ -39,15 +38,7 @@ class NotificationListView(BaseAPIView):
         notifications = self._notification_service.list_user_notifications(
             user_id=request.user.id,
         )
-
-        paginator = StandardPageNumberPagination()
-        page = paginator.paginate_queryset(notifications, request, view=self)
-        if page is not None:
-            serializer = NotificationListSerializer(page, many=True)
-            return paginator.get_paginated_response(serializer.data)
-
-        serializer = NotificationListSerializer(notifications, many=True)
-        return self.success_response(data=serializer.data)
+        return self.paginated_response(notifications, NotificationListSerializer, request)
 
 
 class NotificationMarkReadView(BaseAPIView):
@@ -172,6 +163,7 @@ class DeviceTokenDeregisterView(BaseAPIView):
         serializer.is_valid(raise_exception=True)
 
         self._token_service.deactivate_token(
+            user_id=request.user.id,
             token=serializer.validated_data["token"],
         )
 
