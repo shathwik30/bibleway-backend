@@ -1,8 +1,5 @@
 from __future__ import annotations
-
-
 from rest_framework import serializers
-
 from apps.common.serializers import (
     BaseModelSerializer,
     BaseTimestampedSerializer,
@@ -18,11 +15,6 @@ from .models import (
     SegregatedSection,
     TranslatedPageCache,
 )
-
-
-# ---------------------------------------------------------------------------
-# Segregated Bible content
-# ---------------------------------------------------------------------------
 
 
 class SegregatedSectionListSerializer(BaseTimestampedSerializer):
@@ -87,10 +79,13 @@ class SegregatedPageDetailSerializer(BaseTimestampedSerializer):
     """Full page detail including content and navigation context."""
 
     section_title = serializers.CharField(
-        source="chapter.section.title", read_only=True,
+        source="chapter.section.title",
+        read_only=True,
     )
+
     chapter_title = serializers.CharField(
-        source="chapter.title", read_only=True,
+        source="chapter.title",
+        read_only=True,
     )
 
     class Meta:
@@ -131,33 +126,34 @@ class TranslatedPageSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "translated_content", "created_at"]
 
 
-# ---------------------------------------------------------------------------
-# Bookmark
-# ---------------------------------------------------------------------------
-
-
 class BookmarkCreateSerializer(serializers.Serializer):
     """Write serializer for creating bookmarks."""
 
     bookmark_type = serializers.ChoiceField(choices=Bookmark.BookmarkType.choices)
     verse_reference = serializers.CharField(
-        max_length=50, required=False, default="",
+        max_length=50,
+        required=False,
+        default="",
     )
+
     content_type = serializers.IntegerField(required=False, allow_null=True)
     object_id = serializers.UUIDField(required=False, allow_null=True)
 
     def validate(self, attrs: dict) -> dict:
         bookmark_type = attrs.get("bookmark_type")
+
         if bookmark_type == Bookmark.BookmarkType.API_BIBLE:
             if not attrs.get("verse_reference"):
                 raise serializers.ValidationError(
                     {"verse_reference": "Required for API Bible bookmarks."}
                 )
+
         elif bookmark_type == Bookmark.BookmarkType.SEGREGATED:
             if not attrs.get("content_type") or not attrs.get("object_id"):
                 raise serializers.ValidationError(
                     "content_type and object_id are required for segregated bookmarks."
                 )
+
         return attrs
 
 
@@ -180,50 +176,63 @@ class BookmarkSerializer(BaseModelSerializer):
         read_only_fields = fields
 
 
-# ---------------------------------------------------------------------------
-# Highlight
-# ---------------------------------------------------------------------------
-
-
 class HighlightCreateSerializer(serializers.Serializer):
     """Write serializer for creating highlights."""
 
     highlight_type = serializers.ChoiceField(choices=Highlight.HighlightType.choices)
     color = serializers.ChoiceField(
-        choices=Highlight.Color.choices, default=Highlight.Color.YELLOW,
+        choices=Highlight.Color.choices,
+        default=Highlight.Color.YELLOW,
     )
+
     verse_reference = serializers.CharField(
-        max_length=50, required=False, default="",
+        max_length=50,
+        required=False,
+        default="",
     )
+
     content_type = serializers.IntegerField(required=False, allow_null=True)
     object_id = serializers.UUIDField(required=False, allow_null=True)
     selection_start = serializers.IntegerField(
-        required=False, allow_null=True, min_value=0,
+        required=False,
+        allow_null=True,
+        min_value=0,
     )
+
     selection_end = serializers.IntegerField(
-        required=False, allow_null=True, min_value=0,
+        required=False,
+        allow_null=True,
+        min_value=0,
     )
 
     def validate(self, attrs: dict) -> dict:
         highlight_type = attrs.get("highlight_type")
+
         if highlight_type == Highlight.HighlightType.API_BIBLE:
             if not attrs.get("verse_reference"):
                 raise serializers.ValidationError(
                     {"verse_reference": "Required for API Bible highlights."}
                 )
+
         elif highlight_type == Highlight.HighlightType.SEGREGATED:
             if not attrs.get("content_type") or not attrs.get("object_id"):
                 raise serializers.ValidationError(
                     "content_type and object_id are required for segregated highlights."
                 )
-            if attrs.get("selection_start") is None or attrs.get("selection_end") is None:
+
+            if (
+                attrs.get("selection_start") is None
+                or attrs.get("selection_end") is None
+            ):
                 raise serializers.ValidationError(
                     "selection_start and selection_end are required for segregated highlights."
                 )
+
             if attrs["selection_start"] >= attrs["selection_end"]:
                 raise serializers.ValidationError(
                     "selection_start must be less than selection_end."
                 )
+
         return attrs
 
 
@@ -249,34 +258,35 @@ class HighlightSerializer(BaseModelSerializer):
         read_only_fields = fields
 
 
-# ---------------------------------------------------------------------------
-# Note
-# ---------------------------------------------------------------------------
-
-
 class NoteCreateSerializer(serializers.Serializer):
     """Write serializer for creating notes."""
 
     note_type = serializers.ChoiceField(choices=Note.NoteType.choices)
     text = serializers.CharField()
     verse_reference = serializers.CharField(
-        max_length=50, required=False, default="",
+        max_length=50,
+        required=False,
+        default="",
     )
+
     content_type = serializers.IntegerField(required=False, allow_null=True)
     object_id = serializers.UUIDField(required=False, allow_null=True)
 
     def validate(self, attrs: dict) -> dict:
         note_type = attrs.get("note_type")
+
         if note_type == Note.NoteType.API_BIBLE:
             if not attrs.get("verse_reference"):
                 raise serializers.ValidationError(
                     {"verse_reference": "Required for API Bible notes."}
                 )
+
         elif note_type == Note.NoteType.SEGREGATED:
             if not attrs.get("content_type") or not attrs.get("object_id"):
                 raise serializers.ValidationError(
                     "content_type and object_id are required for segregated notes."
                 )
+
         return attrs
 
 

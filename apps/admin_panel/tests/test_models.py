@@ -1,25 +1,15 @@
 """Tests for admin_panel models: AdminRole, AdminLog, BoostTier."""
 
 from __future__ import annotations
-
 import pytest
 from django.db import IntegrityError
-
 from apps.admin_panel.models import AdminLog, AdminRole, BoostTier
-
-# Import factories from root conftest (they are available automatically via pytest fixtures,
-# but we also use them directly for convenience).
 from conftest import (
     AdminLogFactory,
     AdminRoleFactory,
     BoostTierFactory,
     UserFactory,
 )
-
-
-# ---------------------------------------------------------------------------
-# AdminRole
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
@@ -49,6 +39,7 @@ class TestAdminRoleModel:
     def test_one_to_one_constraint(self):
         """A user can have at most one AdminRole (OneToOne)."""
         role = AdminRoleFactory()
+
         with pytest.raises(IntegrityError):
             AdminRole.objects.create(user=role.user, role="content_admin")
 
@@ -65,11 +56,6 @@ class TestAdminRoleModel:
         user_pk = role.user.pk
         role.user.delete()
         assert not AdminRole.objects.filter(user_id=user_pk).exists()
-
-
-# ---------------------------------------------------------------------------
-# AdminLog
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
@@ -89,8 +75,15 @@ class TestAdminLogModel:
         """All expected action types exist."""
         choices = {c[0] for c in AdminLog.ActionType.choices}
         expected = {
-            "create", "update", "delete", "suspend", "unsuspend",
-            "warn", "dismiss_report", "remove_content", "broadcast",
+            "create",
+            "update",
+            "delete",
+            "suspend",
+            "unsuspend",
+            "warn",
+            "dismiss_report",
+            "remove_content",
+            "broadcast",
             "role_change",
         }
         assert expected.issubset(choices)
@@ -100,7 +93,6 @@ class TestAdminLogModel:
         log1 = AdminLogFactory()
         log2 = AdminLogFactory()
         logs = list(AdminLog.objects.all())
-        # log2 was created after log1, so it should appear first.
         assert logs[0].pk == log2.pk
         assert logs[1].pk == log1.pk
 
@@ -127,11 +119,6 @@ class TestAdminLogModel:
         assert not AdminLog.objects.filter(admin_user_id=user_pk).exists()
 
 
-# ---------------------------------------------------------------------------
-# BoostTier
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.django_db
 class TestBoostTierModel:
     """Tests for the BoostTier model."""
@@ -147,12 +134,14 @@ class TestBoostTierModel:
     def test_unique_apple_product_id(self):
         """apple_product_id must be unique."""
         BoostTierFactory(apple_product_id="com.app.boost_a")
+
         with pytest.raises(IntegrityError):
             BoostTierFactory(apple_product_id="com.app.boost_a")
 
     def test_unique_google_product_id(self):
         """google_product_id must be unique."""
         BoostTierFactory(google_product_id="com.app.boost_g")
+
         with pytest.raises(IntegrityError):
             BoostTierFactory(google_product_id="com.app.boost_g")
 

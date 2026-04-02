@@ -2,21 +2,16 @@ import json as _json
 import ssl as _ssl
 from datetime import timedelta
 from pathlib import Path
-
 import dj_database_url
 from decouple import Csv, config
 
-# ── Paths ───────────────────────────────────────────────────────
-
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-
-# ── Core ────────────────────────────────────────────────────────
 
 SECRET_KEY = config("DJANGO_SECRET_KEY")
 
-ALLOWED_HOSTS = config("DJANGO_ALLOWED_HOSTS", default="localhost,127.0.0.1", cast=Csv())
-
-# ── Installed Apps ──────────────────────────────────────────────
+ALLOWED_HOSTS = config(
+    "DJANGO_ALLOWED_HOSTS", default="localhost,127.0.0.1", cast=Csv()
+)
 
 DJANGO_APPS = [
     "daphne",
@@ -51,11 +46,7 @@ LOCAL_APPS = [
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
-# ── Custom User Model ──────────────────────────────────────────
-
 AUTH_USER_MODEL = "accounts.User"
-
-# ── Middleware ──────────────────────────────────────────────────
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -68,17 +59,11 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-# ── URLs & ASGI ─────────────────────────────────────────────────
-
 ROOT_URLCONF = "config.urls"
-WSGI_APPLICATION = "config.wsgi.application"
-ASGI_APPLICATION = "config.asgi.application"
 
-# ── Database (Neon PostgreSQL) ──────────────────────────────────
-# Neon's "-pooler" endpoint uses PgBouncer in transaction mode.
-# conn_max_age=300 reuses Django-side connections for 5 minutes,
-# avoiding the ~800ms SSL handshake on every request.
-# conn_health_checks=True verifies the connection is alive before use.
+WSGI_APPLICATION = "config.wsgi.application"
+
+ASGI_APPLICATION = "config.asgi.application"
 
 DATABASES = {
     "default": dj_database_url.parse(
@@ -88,10 +73,10 @@ DATABASES = {
         ssl_require=True,
     )
 }
-DATABASES["default"]["OPTIONS"] = DATABASES["default"].get("OPTIONS", {})
-DATABASES["default"]["OPTIONS"]["connect_timeout"] = 10
 
-# ── REST Framework ──────────────────────────────────────────────
+DATABASES["default"]["OPTIONS"] = DATABASES["default"].get("OPTIONS", {})
+
+DATABASES["default"]["OPTIONS"]["connect_timeout"] = 10
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
@@ -119,11 +104,11 @@ REST_FRAMEWORK = {
         "purchase": "10/minute",
         "boost": "10/minute",
         "device_token": "10/minute",
+        "feed": "60/minute",
+        "social_create": "20/minute",
     },
     "EXCEPTION_HANDLER": "apps.common.exceptions.custom_exception_handler",
 }
-
-# ── Simple JWT ──────────────────────────────────────────────────
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
@@ -134,33 +119,30 @@ SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
-# ── Redis / Upstash ───────────────────────────────────────────
-# Upstash Redis uses TLS (rediss:// protocol). All clients (cache,
-# Celery, Channels) need ssl_cert_reqs=CERT_NONE because Upstash
-# does not provide a CA bundle for client verification.
-
 REDIS_URL = config("UPSTASHREDIS_URL", default="")
 
 UPSTASH_SSL_OPTS = {}
+
 if REDIS_URL.startswith("rediss://"):
     UPSTASH_SSL_OPTS = {
         "ssl_cert_reqs": _ssl.CERT_NONE,
     }
-
-# ── Channel Layers (Django Channels + Upstash Redis) ───────────
 
 if REDIS_URL:
     CHANNEL_LAYERS = {
         "default": {
             "BACKEND": "channels_redis.core.RedisChannelLayer",
             "CONFIG": {
-                "hosts": [{
-                    "address": REDIS_URL,
-                    **UPSTASH_SSL_OPTS,
-                }],
+                "hosts": [
+                    {
+                        "address": REDIS_URL,
+                        **UPSTASH_SSL_OPTS,
+                    }
+                ],
             },
         },
     }
+
 else:
     CHANNEL_LAYERS = {
         "default": {
@@ -168,40 +150,63 @@ else:
         },
     }
 
-# ── Celery ──────────────────────────────────────────────────────
-
 CELERY_BROKER_URL = REDIS_URL or "memory://"
+
 CELERY_RESULT_BACKEND = REDIS_URL or "cache+memory://"
+
 CELERY_ACCEPT_CONTENT = ["json"]
+
 CELERY_TASK_SERIALIZER = "json"
+
 CELERY_RESULT_SERIALIZER = "json"
+
 CELERY_TIMEZONE = "UTC"
 
 if UPSTASH_SSL_OPTS:
     CELERY_BROKER_USE_SSL = UPSTASH_SSL_OPTS
+
     CELERY_REDIS_BACKEND_USE_SSL = UPSTASH_SSL_OPTS
+
+CELERY_TASK_ACKS_LATE = True
+
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    "visibility_timeout": 3600,
+    "max_retries": 3,
+    "interval_start": 0.1,
+    "interval_step": 0.2,
+    "interval_max": 0.5,
+}
 
 CELERY_BEAT_SCHEDULE = {
     "deactivate-expired-boosts": {
         "task": "apps.analytics.tasks.deactivate_expired_boosts",
-        "schedule": 300.0,  # every 5 minutes
+        "schedule": 300.0,
     },
     "generate-boost-snapshots": {
         "task": "apps.analytics.tasks.generate_boost_snapshots",
-        "schedule": 86400.0,  # every 24 hours
+        "schedule": 86400.0,
+    },
+    "archive-old-post-views": {
+        "task": "apps.analytics.tasks.archive_old_post_views",
+        "schedule": 86400.0,
     },
 }
-
-# ── Cache ─────────────────────────────────────────────────────
 
 if REDIS_URL:
     CACHES = {
         "default": {
             "BACKEND": "django.core.cache.backends.redis.RedisCache",
             "LOCATION": REDIS_URL,
+            "KEY_PREFIX": "bibleway",
+            "TIMEOUT": 300,
             "OPTIONS": UPSTASH_SSL_OPTS if UPSTASH_SSL_OPTS else {},
         },
     }
+
 else:
     CACHES = {
         "default": {
@@ -209,9 +214,8 @@ else:
         },
     }
 
-# ── UploadThing ──────────────────────────────────────────────────
-
 UPLOADTHING_TOKEN = config("UPLOADTHING_TOKEN", default="")
+
 UPLOADTHING_APP_ID = config("UPLOADTHING_APP_ID", default="")
 
 if UPLOADTHING_TOKEN and UPLOADTHING_APP_ID:
@@ -223,6 +227,7 @@ if UPLOADTHING_TOKEN and UPLOADTHING_APP_ID:
             "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
         },
     }
+
 else:
     STORAGES = {
         "default": {
@@ -232,8 +237,6 @@ else:
             "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
         },
     }
-
-# ── Templates ───────────────────────────────────────────────────
 
 TEMPLATES = [
     {
@@ -251,65 +254,71 @@ TEMPLATES = [
     },
 ]
 
-# ── Password Validation ────────────────────────────────────────
-
 AUTH_PASSWORD_VALIDATORS = [
-    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
-    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator", "OPTIONS": {"min_length": 8}},
+    {
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"
+    },
+    {
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+        "OPTIONS": {"min_length": 8},
+    },
     {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
-# ── Static & Media ──────────────────────────────────────────────
-
 STATIC_URL = "/static/"
+
 STATIC_ROOT = BASE_DIR / "staticfiles"
-MEDIA_URL = ""  # UploadThing storage generates its own full URLs
 
-# ── Upload Size Limits ─────────────────────────────────────────
+MEDIA_URL = ""
 
-DATA_UPLOAD_MAX_MEMORY_SIZE = 104857600  # 100 MB
-FILE_UPLOAD_MAX_MEMORY_SIZE = 104857600  # 100 MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = 104857600
 
-# ── Internationalization ────────────────────────────────────────
+FILE_UPLOAD_MAX_MEMORY_SIZE = 104857600
 
 LANGUAGE_CODE = "en-us"
+
 TIME_ZONE = "UTC"
+
 USE_I18N = True
+
 USE_TZ = True
 
-# ── External API Keys ───────────────────────────────────────────
-
 API_BIBLE_KEY = config("API_BIBLE_KEY", default="")
+
 RESEND_API_KEY = config("RESEND_API_KEY", default="")
+
 GOOGLE_TRANSLATE_API_KEY = config("GOOGLE_TRANSLATE_API_KEY", default="")
+
 GOOGLE_OAUTH_CLIENT_IDS = [
     cid.strip()
     for cid in config("GOOGLE_OAUTH_CLIENT_IDS", default="").split(",")
     if cid.strip()
 ]
 
-# ── In-App Purchase Verification ────────────────────────────────
-
 APPLE_SHARED_SECRET = config("APPLE_SHARED_SECRET", default="")
+
 APPLE_BUNDLE_ID = config("APPLE_BUNDLE_ID", default="com.bibleway.io")
+
 ANDROID_PACKAGE_NAME = config("ANDROID_PACKAGE_NAME", default="com.bibleway.io")
+
 
 def _parse_json_setting(raw: str) -> dict | None:
     if not raw or not raw.strip().startswith("{"):
         return None
+
     try:
         return _json.loads(raw)
+
     except _json.JSONDecodeError:
         return None
 
-GOOGLE_PLAY_CREDENTIALS = _parse_json_setting(config("GOOGLE_PLAY_CREDENTIALS_JSON", default=""))
 
-# ── Default PK ──────────────────────────────────────────────────
+GOOGLE_PLAY_CREDENTIALS = _parse_json_setting(
+    config("GOOGLE_PLAY_CREDENTIALS_JSON", default="")
+)
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-
-# ── Logging ────────────────────────────────────────────────────
 
 LOGGING = {
     "version": 1,

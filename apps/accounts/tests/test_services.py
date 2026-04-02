@@ -1,20 +1,18 @@
 """Tests for accounts app services: OTPService, UserService, AuthService, FollowService, BlockService."""
 
 from __future__ import annotations
-
 import datetime
 from unittest.mock import patch
 from uuid import uuid4
-
 import pytest
 from django.utils import timezone
 from rest_framework_simplejwt.tokens import RefreshToken
-
 from apps.accounts.models import (
     BlockRelationship,
     FollowRelationship,
     OTPToken,
 )
+
 from apps.accounts.services import (
     AuthService,
     BlockService,
@@ -22,12 +20,14 @@ from apps.accounts.services import (
     OTPService,
     UserService,
 )
+
 from apps.common.exceptions import (
     BadRequestError,
     ConflictError,
     ForbiddenError,
     NotFoundError,
 )
+
 from conftest import (
     BlockRelationshipFactory,
     FollowRelationshipFactory,
@@ -51,13 +51,14 @@ class TestOTPService:
     def test_create_otp_creates_token_in_db(self):
         user = UserFactory()
         self.service.create_otp(user=user, purpose=OTPToken.Purpose.REGISTER)
-        assert OTPToken.objects.filter(user=user, purpose="register", used=False).exists()
+        assert OTPToken.objects.filter(
+            user=user, purpose="register", used=False
+        ).exists()
 
     def test_create_otp_invalidates_previous_otps(self):
         user = UserFactory()
         self.service.create_otp(user=user, purpose=OTPToken.Purpose.REGISTER)
         self.service.create_otp(user=user, purpose=OTPToken.Purpose.REGISTER)
-
         unused = OTPToken.objects.filter(user=user, purpose="register", used=False)
         assert unused.count() == 1
 
@@ -72,6 +73,7 @@ class TestOTPService:
     def test_verify_otp_invalid_code(self):
         user = UserFactory()
         self.service.create_otp(user=user, purpose=OTPToken.Purpose.REGISTER)
+
         with pytest.raises(BadRequestError, match="Invalid OTP code"):
             self.service.verify_otp(
                 user=user, plain_code="000000", purpose=OTPToken.Purpose.REGISTER
@@ -86,6 +88,7 @@ class TestOTPService:
             self.service.verify_otp(
                 user=user, plain_code="000000", purpose=OTPToken.Purpose.REGISTER
             )
+
         token = OTPToken.objects.get(user=user, purpose="register", used=False)
         assert token.attempts == 1
 
@@ -101,7 +104,6 @@ class TestOTPService:
     def test_verify_otp_max_attempts_exceeded(self):
         user = UserFactory()
         code = self.service.create_otp(user=user, purpose=OTPToken.Purpose.REGISTER)
-
         OTPToken.objects.filter(user=user, purpose="register", used=False).update(
             attempts=OTPToken.MAX_ATTEMPTS
         )
@@ -114,7 +116,6 @@ class TestOTPService:
     def test_verify_otp_locks_after_final_failed_attempt(self):
         user = UserFactory()
         code = self.service.create_otp(user=user, purpose=OTPToken.Purpose.REGISTER)
-
         OTPToken.objects.filter(user=user, purpose="register", used=False).update(
             attempts=OTPToken.MAX_ATTEMPTS - 1
         )
@@ -123,6 +124,7 @@ class TestOTPService:
             self.service.verify_otp(
                 user=user, plain_code="000000", purpose=OTPToken.Purpose.REGISTER
             )
+
         with pytest.raises(BadRequestError, match="Maximum verification attempts"):
             self.service.verify_otp(
                 user=user, plain_code=code, purpose=OTPToken.Purpose.REGISTER
@@ -131,7 +133,6 @@ class TestOTPService:
     def test_verify_otp_expired(self):
         user = UserFactory()
         code = self.service.create_otp(user=user, purpose=OTPToken.Purpose.REGISTER)
-
         OTPToken.objects.filter(user=user, purpose="register", used=False).update(
             expires_at=timezone.now() - datetime.timedelta(minutes=1)
         )
@@ -143,6 +144,7 @@ class TestOTPService:
 
     def test_verify_otp_no_active_token(self):
         user = UserFactory()
+
         with pytest.raises(BadRequestError, match="No active OTP found"):
             self.service.verify_otp(
                 user=user, plain_code="123456", purpose=OTPToken.Purpose.REGISTER
@@ -152,10 +154,8 @@ class TestOTPService:
         user = UserFactory()
         self.service.create_otp(user=user, purpose=OTPToken.Purpose.REGISTER)
         self.service.create_otp(user=user, purpose=OTPToken.Purpose.REGISTER)
-
         unused = OTPToken.objects.filter(user=user, purpose="register", used=False)
         assert unused.count() == 1
-
         count = self.service.invalidate_user_otps(
             user=user, purpose=OTPToken.Purpose.REGISTER
         )
@@ -166,6 +166,7 @@ class TestOTPService:
     def test_verify_otp_different_purpose_not_found(self):
         user = UserFactory()
         self.service.create_otp(user=user, purpose=OTPToken.Purpose.REGISTER)
+
         with pytest.raises(BadRequestError, match="No active OTP found"):
             self.service.verify_otp(
                 user=user, plain_code="123456", purpose=OTPToken.Purpose.PASSWORD_RESET
@@ -190,7 +191,6 @@ class TestUserService:
             "country": "US",
         }
         user = self.service.register_user(validated_data=data)
-
         assert user.email == "new@example.com"
         assert user.full_name == "New User"
         assert user.check_password("TestPass1!")
@@ -221,6 +221,7 @@ class TestUserService:
             "gender": "male",
             "country": "US",
         }
+
         with pytest.raises(ConflictError, match="already exists"):
             self.service.register_user(validated_data=data)
 
@@ -235,6 +236,7 @@ class TestUserService:
             "gender": "male",
             "country": "US",
         }
+
         with pytest.raises(ConflictError, match="already exists"):
             self.service.register_user(validated_data=data)
 
@@ -258,6 +260,7 @@ class TestUserService:
 
     def test_get_profile_inactive_user(self):
         user = UserFactory(is_active=False)
+
         with pytest.raises(NotFoundError):
             self.service.get_profile(user_id=user.id)
 
@@ -281,6 +284,7 @@ class TestUserService:
 
     def test_update_profile_no_valid_fields_raises(self):
         user = UserFactory()
+
         with pytest.raises(BadRequestError, match="No valid fields"):
             self.service.update_profile(
                 user=user,
@@ -302,7 +306,6 @@ class TestUserService:
     def test_search_users_by_name(self):
         UserFactory(full_name="Alice Wonder", is_email_verified=True)
         UserFactory(full_name="Bob Builder", is_email_verified=True)
-
         results = self.service.search_users(query="Alice")
         assert results.count() == 1
         assert results.first().full_name == "Alice Wonder"
@@ -315,7 +318,6 @@ class TestUserService:
     def test_search_users_by_country(self):
         UserFactory(full_name="US User", country="US", is_email_verified=True)
         UserFactory(full_name="UK User", country="UK", is_email_verified=True)
-
         results = self.service.search_users(query="", country="US")
         assert results.count() == 1
         assert results.first().country == "US"
@@ -371,6 +373,7 @@ class TestAuthService:
 
     def test_login_invalid_password(self):
         user = UserFactory(is_email_verified=True)
+
         with pytest.raises(BadRequestError, match="Invalid email or password"):
             self.service.login(email=user.email, password="WrongPassword1!")
 
@@ -380,11 +383,13 @@ class TestAuthService:
 
     def test_login_unverified_email(self):
         user = UserFactory(is_email_verified=False)
+
         with pytest.raises(BadRequestError, match="verify your email"):
             self.service.login(email=user.email, password="TestPass1!")
 
     def test_login_inactive_account(self):
         user = UserFactory(is_active=False, is_email_verified=True)
+
         with pytest.raises(BadRequestError, match="Invalid email or password"):
             self.service.login(email=user.email, password="TestPass1!")
 
@@ -415,22 +420,18 @@ class TestAuthService:
         user = UserFactory(is_email_verified=False)
         otp_service = OTPService()
         code = otp_service.create_otp(user=user, purpose=OTPToken.Purpose.REGISTER)
-
-        verified_user = self.service.verify_email_otp(
-            email=user.email, otp_code=code
-        )
+        verified_user = self.service.verify_email_otp(email=user.email, otp_code=code)
         assert verified_user.is_email_verified is True
 
     def test_verify_email_already_verified_raises_conflict(self):
         user = UserFactory(is_email_verified=True)
+
         with pytest.raises(ConflictError, match="already verified"):
             self.service.verify_email_otp(email=user.email, otp_code="123456")
 
     def test_verify_email_nonexistent_user_raises(self):
         with pytest.raises(NotFoundError, match="No active account"):
-            self.service.verify_email_otp(
-                email="ghost@example.com", otp_code="123456"
-            )
+            self.service.verify_email_otp(email="ghost@example.com", otp_code="123456")
 
     @patch("apps.accounts.services._dispatch_otp_email")
     def test_request_password_reset_sends_otp(self, mock_send):
@@ -450,11 +451,9 @@ class TestAuthService:
         code = otp_service.create_otp(
             user=user, purpose=OTPToken.Purpose.PASSWORD_RESET
         )
-
         self.service.confirm_password_reset(
             email=user.email, otp_code=code, new_password="NewPass1!"
         )
-
         user.refresh_from_db()
         assert user.check_password("NewPass1!")
 
@@ -462,12 +461,10 @@ class TestAuthService:
     def test_confirm_password_reset_invalidates_sessions(self, mock_send):
         user = UserFactory(is_email_verified=True)
         refresh = RefreshToken.for_user(user)
-
         otp_service = OTPService()
         code = otp_service.create_otp(
             user=user, purpose=OTPToken.Purpose.PASSWORD_RESET
         )
-
         self.service.confirm_password_reset(
             email=user.email, otp_code=code, new_password="NewPass1!"
         )
@@ -485,6 +482,7 @@ class TestAuthService:
 
     def test_change_password_wrong_old_password(self):
         user = UserFactory()
+
         with pytest.raises(BadRequestError, match="Current password is incorrect"):
             self.service.change_password(
                 user=user, old_password="WrongPass1!", new_password="NewPass1!"
@@ -493,7 +491,6 @@ class TestAuthService:
     def test_change_password_invalidates_sessions(self):
         user = UserFactory()
         refresh = RefreshToken.for_user(user)
-
         self.service.change_password(
             user=user, old_password="TestPass1!", new_password="NewPass1!"
         )
@@ -513,15 +510,19 @@ class TestFollowService:
         follower = UserFactory()
         target = UserFactory()
         self.service.follow_user(follower=follower, target_id=target.id)
-        assert FollowRelationship.objects.filter(follower=follower, following=target).exists()
+        assert FollowRelationship.objects.filter(
+            follower=follower, following=target
+        ).exists()
 
     def test_follow_self_raises(self):
         user = UserFactory()
+
         with pytest.raises(BadRequestError, match="cannot follow yourself"):
             self.service.follow_user(follower=user, target_id=user.id)
 
     def test_follow_nonexistent_user_raises(self):
         user = UserFactory()
+
         with pytest.raises(NotFoundError, match="User not found"):
             self.service.follow_user(follower=user, target_id=uuid4())
 
@@ -552,6 +553,7 @@ class TestFollowService:
     def test_follow_inactive_user_raises(self):
         follower = UserFactory()
         target = UserFactory(is_active=False)
+
         with pytest.raises(NotFoundError, match="User not found"):
             self.service.follow_user(follower=follower, target_id=target.id)
 
@@ -559,7 +561,6 @@ class TestFollowService:
         follower = UserFactory()
         target = UserFactory()
         FollowRelationshipFactory(follower=follower, following=target)
-
         self.service.unfollow_user(follower=follower, target_id=target.id)
         assert not FollowRelationship.objects.filter(
             follower=follower, following=target
@@ -568,6 +569,7 @@ class TestFollowService:
     def test_unfollow_not_following_raises(self):
         follower = UserFactory()
         target = UserFactory()
+
         with pytest.raises(NotFoundError, match="not following"):
             self.service.unfollow_user(follower=follower, target_id=target.id)
 
@@ -577,7 +579,6 @@ class TestFollowService:
         follower2 = UserFactory()
         FollowRelationshipFactory(follower=follower1, following=target)
         FollowRelationshipFactory(follower=follower2, following=target)
-
         followers = self.service.get_followers(user_id=target.id)
         assert followers.count() == 2
 
@@ -587,7 +588,6 @@ class TestFollowService:
         target2 = UserFactory()
         FollowRelationshipFactory(follower=user, following=target1)
         FollowRelationshipFactory(follower=user, following=target2)
-
         following = self.service.get_following(user_id=user.id)
         assert following.count() == 2
 
@@ -597,7 +597,6 @@ class TestFollowService:
         follower2 = UserFactory()
         FollowRelationshipFactory(follower=follower1, following=target)
         FollowRelationshipFactory(follower=follower2, following=target)
-
         assert self.service.get_follower_count(user_id=target.id) == 2
 
     def test_get_following_count(self):
@@ -606,7 +605,6 @@ class TestFollowService:
         target2 = UserFactory()
         FollowRelationshipFactory(follower=user, following=target1)
         FollowRelationshipFactory(follower=user, following=target2)
-
         assert self.service.get_following_count(user_id=user.id) == 2
 
 
@@ -626,11 +624,13 @@ class TestBlockService:
 
     def test_block_self_raises(self):
         user = UserFactory()
+
         with pytest.raises(BadRequestError, match="cannot block yourself"):
             self.service.block_user(blocker=user, target_id=user.id)
 
     def test_block_nonexistent_user_raises(self):
         user = UserFactory()
+
         with pytest.raises(NotFoundError, match="User not found"):
             self.service.block_user(blocker=user, target_id=uuid4())
 
@@ -645,6 +645,7 @@ class TestBlockService:
     def test_block_inactive_user_raises(self):
         blocker = UserFactory()
         target = UserFactory(is_active=False)
+
         with pytest.raises(NotFoundError, match="User not found"):
             self.service.block_user(blocker=blocker, target_id=target.id)
 
@@ -652,7 +653,6 @@ class TestBlockService:
         blocker = UserFactory()
         target = UserFactory()
         BlockRelationshipFactory(blocker=blocker, blocked=target)
-
         self.service.unblock_user(blocker=blocker, target_id=target.id)
         assert not BlockRelationship.objects.filter(
             blocker=blocker, blocked=target
@@ -661,6 +661,7 @@ class TestBlockService:
     def test_unblock_not_blocked_raises(self):
         blocker = UserFactory()
         target = UserFactory()
+
         with pytest.raises(NotFoundError, match="not blocked"):
             self.service.unblock_user(blocker=blocker, target_id=target.id)
 
@@ -670,7 +671,6 @@ class TestBlockService:
         target2 = UserFactory()
         BlockRelationshipFactory(blocker=blocker, blocked=target1)
         BlockRelationshipFactory(blocker=blocker, blocked=target2)
-
         blocked = self.service.get_blocked_users(user_id=blocker.id)
         assert blocked.count() == 2
 
@@ -678,21 +678,20 @@ class TestBlockService:
         user_a = UserFactory()
         user_b = UserFactory()
         BlockRelationshipFactory(blocker=user_a, blocked=user_b)
-
         assert self.service.is_blocked(user_a_id=user_a.id, user_b_id=user_b.id) is True
 
     def test_is_blocked_reverse(self):
         user_a = UserFactory()
         user_b = UserFactory()
         BlockRelationshipFactory(blocker=user_b, blocked=user_a)
-
         assert self.service.is_blocked(user_a_id=user_a.id, user_b_id=user_b.id) is True
 
     def test_is_not_blocked(self):
         user_a = UserFactory()
         user_b = UserFactory()
-
-        assert self.service.is_blocked(user_a_id=user_a.id, user_b_id=user_b.id) is False
+        assert (
+            self.service.is_blocked(user_a_id=user_a.id, user_b_id=user_b.id) is False
+        )
 
     def test_block_removes_follow_relationships(self):
         """Blocking should remove any existing follow relationships (via signal)."""
@@ -700,12 +699,16 @@ class TestBlockService:
         target = UserFactory()
         FollowRelationshipFactory(follower=blocker, following=target)
         FollowRelationshipFactory(follower=target, following=blocker)
-
         self.service.block_user(blocker=blocker, target_id=target.id)
-
-        assert FollowRelationship.objects.filter(
-            follower=blocker, following=target
-        ).count() == 0
-        assert FollowRelationship.objects.filter(
-            follower=target, following=blocker
-        ).count() == 0
+        assert (
+            FollowRelationship.objects.filter(
+                follower=blocker, following=target
+            ).count()
+            == 0
+        )
+        assert (
+            FollowRelationship.objects.filter(
+                follower=target, following=blocker
+            ).count()
+            == 0
+        )

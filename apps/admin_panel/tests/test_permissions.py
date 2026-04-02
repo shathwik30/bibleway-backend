@@ -1,12 +1,9 @@
 """Tests for apps.admin_panel.permissions — RBAC admin permission classes."""
 
 from __future__ import annotations
-
 from unittest.mock import MagicMock
-
 import pytest
 from django.contrib.auth.models import AnonymousUser
-
 from apps.admin_panel.models import AdminRole
 from apps.admin_panel.permissions import (
     IsAdminStaff,
@@ -15,30 +12,27 @@ from apps.admin_panel.permissions import (
     IsSuperAdmin,
 )
 
-# Import factories from root conftest (available via pytest fixtures).
-# We use the conftest factories directly for convenience.
 from conftest import AdminRoleFactory, UserFactory
 
 
 @pytest.fixture
 def mock_view():
     """Return a minimal mock view for permission checks."""
+
     return MagicMock()
 
 
 @pytest.fixture
 def request_factory():
     """Return a callable that creates a mock request with a given user."""
+
     def _make(user):
         req = MagicMock()
         req.user = user
+
         return req
+
     return _make
-
-
-# ════════════════════════════════════════════════════════════════
-# IsAdminStaff
-# ════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.django_db
@@ -77,11 +71,6 @@ class TestIsAdminStaff:
         assert perm.has_permission(request, mock_view) is False
 
 
-# ════════════════════════════════════════════════════════════════
-# IsSuperAdmin
-# ════════════════════════════════════════════════════════════════
-
-
 @pytest.mark.django_db
 class TestIsSuperAdmin:
     """Tests for IsSuperAdmin permission."""
@@ -116,11 +105,6 @@ class TestIsSuperAdmin:
         assert perm.has_permission(request_factory(role.user), mock_view) is False
 
 
-# ════════════════════════════════════════════════════════════════
-# IsContentAdmin
-# ════════════════════════════════════════════════════════════════
-
-
 @pytest.mark.django_db
 class TestIsContentAdmin:
     """Tests for IsContentAdmin permission."""
@@ -153,11 +137,6 @@ class TestIsContentAdmin:
         role = AdminRoleFactory(role=AdminRole.RoleType.MODERATION_ADMIN)
         perm = IsContentAdmin()
         assert perm.has_permission(request_factory(role.user), mock_view) is False
-
-
-# ════════════════════════════════════════════════════════════════
-# IsModerationAdmin
-# ════════════════════════════════════════════════════════════════
 
 
 @pytest.mark.django_db

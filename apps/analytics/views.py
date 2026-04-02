@@ -1,16 +1,12 @@
 from __future__ import annotations
-
 from typing import Any
 from uuid import UUID
-
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
-
 from apps.common.exceptions import ForbiddenError, NotFoundError
 from apps.common.throttles import BoostRateThrottle
 from apps.common.views import BaseAPIView
-
 from .models import PostBoost
 from .models import PostView
 from .serializers import (
@@ -20,12 +16,8 @@ from .serializers import (
     PostBoostSerializer,
     RecordViewSerializer,
 )
+
 from .services import AnalyticsService, PostBoostService, PostViewService
-
-
-# ---------------------------------------------------------------------------
-# Post analytics views
-# ---------------------------------------------------------------------------
 
 
 class PostAnalyticsView(BaseAPIView):
@@ -43,6 +35,7 @@ class PostAnalyticsView(BaseAPIView):
             requesting_user_id=request.user.id,
         )
         serializer = PostAnalyticsSerializer(data)
+
         return self.success_response(data=serializer.data)
 
 
@@ -59,12 +52,8 @@ class UserAnalyticsView(BaseAPIView):
         data = self._analytics_service.get_user_analytics(
             user_id=request.user.id,
         )
+
         return self.success_response(data=data)
-
-
-# ---------------------------------------------------------------------------
-# View / share recording
-# ---------------------------------------------------------------------------
 
 
 class RecordViewView(BaseAPIView):
@@ -80,25 +69,21 @@ class RecordViewView(BaseAPIView):
         serializer = RecordViewSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-
         self._view_service.record_view(
             content_type_model=data["content_type_model"],
             object_id=data["object_id"],
             viewer_id=request.user.id,
             view_type=data.get("view_type", PostView.ViewType.VIEW),
         )
+
         return self.success_response(message="Recorded.")
-
-
-# ---------------------------------------------------------------------------
-# Boost views
-# ---------------------------------------------------------------------------
 
 
 class PostBoostCreateView(BaseAPIView):
     """POST /analytics/boosts/ -- activate a post boost."""
 
     permission_classes = [IsAuthenticated]
+
     throttle_classes = [BoostRateThrottle]
 
     def __init__(self, **kwargs: Any) -> None:
@@ -109,7 +94,6 @@ class PostBoostCreateView(BaseAPIView):
         serializer = PostBoostCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-
         boost = self._boost_service.activate_boost(
             post_id=data["post_id"],
             user_id=request.user.id,
@@ -119,8 +103,8 @@ class PostBoostCreateView(BaseAPIView):
             transaction_id=data["transaction_id"],
             duration_days=data["duration_days"],
         )
-
         out = PostBoostSerializer(boost)
+
         return self.created_response(
             data=out.data,
             message="Post boost activated successfully.",
@@ -147,6 +131,7 @@ class PostBoostListView(BaseAPIView):
             user_id=request.user.id,
             active_only=active_only,
         )
+
         return self.paginated_response(boosts, PostBoostSerializer, request)
 
 
@@ -160,9 +145,9 @@ class BoostAnalyticsView(BaseAPIView):
         self._boost_service = PostBoostService()
 
     def get(self, request: Request, boost_id: UUID) -> Response:
-        # Ownership check: verify the boost belongs to the requesting user's post
         try:
             boost = PostBoost.objects.select_related("post").get(pk=boost_id)
+
         except PostBoost.DoesNotExist:
             raise NotFoundError(detail=f"Boost with id '{boost_id}' not found.")
 
@@ -172,6 +157,7 @@ class BoostAnalyticsView(BaseAPIView):
             )
 
         snapshots = self._boost_service.get_boost_analytics(boost_id=boost_id)
+
         return self.paginated_response(
             snapshots,
             BoostAnalyticSnapshotSerializer,

@@ -1,7 +1,5 @@
 from __future__ import annotations
-
 from django.urls import path
-
 from .views import (
     BoostAnalyticsView,
     PostAnalyticsView,
@@ -14,17 +12,13 @@ from .views import (
 app_name = "analytics"
 
 urlpatterns = [
-    # View / share recording
     path("views/", RecordViewView.as_view(), name="record-view"),
-    # Post analytics
     path(
         "posts/<uuid:post_id>/",
         PostAnalyticsView.as_view(),
         name="post-analytics",
     ),
-    # User aggregate analytics
     path("me/", UserAnalyticsView.as_view(), name="user-analytics"),
-    # Boosts
     path("boosts/", PostBoostCreateView.as_view(), name="boost-create"),
     path("boosts/list/", PostBoostListView.as_view(), name="boost-list"),
     path(

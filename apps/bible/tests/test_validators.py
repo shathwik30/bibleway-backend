@@ -1,10 +1,8 @@
 """Tests for apps.bible.validators — verse reference, YouTube URL, and language code validation."""
 
 from __future__ import annotations
-
 import pytest
 from django.core.exceptions import ValidationError
-
 from apps.bible.validators import (
     validate_language_code,
     validate_verse_reference,
@@ -12,17 +10,12 @@ from apps.bible.validators import (
 )
 
 
-# ════════════════════════════════════════════════════════════════
-# validate_verse_reference
-# ════════════════════════════════════════════════════════════════
-
-
 class TestValidateVerseReference:
     """Tests for validate_verse_reference()."""
 
     def test_simple_reference_valid(self):
         """A simple 'GEN.1.1' reference passes."""
-        validate_verse_reference("GEN.1.1")  # should not raise
+        validate_verse_reference("GEN.1.1")
 
     def test_john_three_sixteen_valid(self):
         """'JHN.3.16' is valid."""
@@ -42,26 +35,31 @@ class TestValidateVerseReference:
 
     def test_lowercase_rejected(self):
         """Lowercase book codes are rejected."""
+
         with pytest.raises(ValidationError, match="Invalid verse reference"):
             validate_verse_reference("gen.1.1")
 
     def test_missing_verse_rejected(self):
         """A reference without a verse number is rejected."""
+
         with pytest.raises(ValidationError, match="Invalid verse reference"):
             validate_verse_reference("GEN.1")
 
     def test_extra_segments_rejected(self):
         """Too many dot-segments are rejected."""
+
         with pytest.raises(ValidationError, match="Invalid verse reference"):
             validate_verse_reference("GEN.1.1.2")
 
     def test_empty_string_rejected(self):
         """Empty string is rejected."""
+
         with pytest.raises(ValidationError, match="Invalid verse reference"):
             validate_verse_reference("")
 
     def test_plain_text_rejected(self):
         """Arbitrary text is rejected."""
+
         with pytest.raises(ValidationError, match="Invalid verse reference"):
             validate_verse_reference("Genesis chapter 1 verse 1")
 
@@ -71,12 +69,7 @@ class TestValidateVerseReference:
 
     def test_five_letter_book_code_valid(self):
         """Five-character book codes are allowed by the pattern."""
-        validate_verse_reference("SONGS.1.1")  # 5 chars
-
-
-# ════════════════════════════════════════════════════════════════
-# validate_youtube_url
-# ════════════════════════════════════════════════════════════════
+        validate_verse_reference("SONGS.1.1")
 
 
 class TestValidateYoutubeUrl:
@@ -84,7 +77,7 @@ class TestValidateYoutubeUrl:
 
     def test_empty_string_allowed(self):
         """Empty value is allowed (early return)."""
-        validate_youtube_url("")  # should not raise
+        validate_youtube_url("")
 
     def test_standard_watch_url(self):
         """Standard youtube.com/watch?v= URL passes."""
@@ -108,27 +101,25 @@ class TestValidateYoutubeUrl:
 
     def test_non_youtube_url_rejected(self):
         """A non-YouTube URL is rejected."""
+
         with pytest.raises(ValidationError, match="valid YouTube URL"):
             validate_youtube_url("https://vimeo.com/12345")
 
     def test_invalid_url_format_rejected(self):
         """A non-URL string is rejected by URL validation."""
+
         with pytest.raises(ValidationError):
             validate_youtube_url("not-a-url-at-all")
 
     def test_youtube_channel_url_rejected(self):
         """A YouTube channel URL (not a video) is rejected."""
+
         with pytest.raises(ValidationError, match="valid YouTube URL"):
             validate_youtube_url("https://www.youtube.com/channel/UCxxxxxx")
 
     def test_without_www(self):
         """URL without www subdomain passes."""
         validate_youtube_url("https://youtube.com/watch?v=dQw4w9WgXcQ")
-
-
-# ════════════════════════════════════════════════════════════════
-# validate_language_code
-# ════════════════════════════════════════════════════════════════
 
 
 class TestValidateLanguageCode:
@@ -152,30 +143,36 @@ class TestValidateLanguageCode:
 
     def test_uppercase_language_rejected(self):
         """Uppercase language part is rejected."""
+
         with pytest.raises(ValidationError, match="Invalid language code"):
             validate_language_code("EN")
 
     def test_three_letter_rejected(self):
         """Three-letter codes are rejected (ISO 639-1 is 2-letter)."""
+
         with pytest.raises(ValidationError, match="Invalid language code"):
             validate_language_code("eng")
 
     def test_lowercase_region_rejected(self):
         """Lowercase region part is rejected."""
+
         with pytest.raises(ValidationError, match="Invalid language code"):
             validate_language_code("en-us")
 
     def test_empty_string_rejected(self):
         """Empty string is rejected."""
+
         with pytest.raises(ValidationError, match="Invalid language code"):
             validate_language_code("")
 
     def test_single_letter_rejected(self):
         """Single letter is rejected."""
+
         with pytest.raises(ValidationError, match="Invalid language code"):
             validate_language_code("e")
 
     def test_number_rejected(self):
         """Numeric strings are rejected."""
+
         with pytest.raises(ValidationError, match="Invalid language code"):
             validate_language_code("12")

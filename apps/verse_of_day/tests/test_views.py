@@ -1,17 +1,10 @@
 """Tests for apps.verse_of_day.views — API endpoints for verse of the day."""
 
 from __future__ import annotations
-
 import datetime
-
 import pytest
 from django.utils import timezone
 from rest_framework import status
-
-
-# ---------------------------------------------------------------------------
-# GET /api/v1/verse-of-day/today/
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
@@ -20,6 +13,7 @@ class TestTodayVerseView:
 
     def setup_method(self):
         from django.core.cache import cache
+
         cache.clear()
 
     def test_returns_scheduled_verse(self, auth_client):
@@ -32,7 +26,6 @@ class TestTodayVerseView:
             bible_reference="Psalm 119:105",
             verse_text="Your word is a lamp...",
         )
-
         response = auth_client.get(self.url)
         assert response.status_code == status.HTTP_200_OK
         data = response.data["data"]
@@ -44,7 +37,6 @@ class TestTodayVerseView:
         from conftest import VerseFallbackPoolFactory
 
         VerseFallbackPoolFactory(is_active=True, bible_reference="Proverbs 3:5")
-
         response = auth_client.get(self.url)
         assert response.status_code == status.HTTP_200_OK
         data = response.data["data"]
@@ -66,7 +58,6 @@ class TestTodayVerseView:
 
         today = timezone.now().date()
         VerseOfDayFactory(display_date=today, is_active=True)
-
         response = auth_client.get(self.url)
         data = response.data["data"]
         assert "id" in data
@@ -78,11 +69,6 @@ class TestTodayVerseView:
     def test_message_present(self, auth_client):
         response = auth_client.get(self.url)
         assert "message" in response.data
-
-
-# ---------------------------------------------------------------------------
-# GET /api/v1/verse-of-day/<date_str>/
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
@@ -99,7 +85,6 @@ class TestVerseByDateView:
             is_active=True,
             bible_reference="Luke 2:11",
         )
-
         response = auth_client.get(self._url("2025-12-25"))
         assert response.status_code == status.HTTP_200_OK
         assert response.data["data"]["bible_reference"] == "Luke 2:11"
@@ -109,7 +94,6 @@ class TestVerseByDateView:
         from conftest import VerseFallbackPoolFactory
 
         VerseFallbackPoolFactory(is_active=True)
-
         response = auth_client.get(self._url("2025-06-15"))
         assert response.status_code == status.HTTP_200_OK
         assert response.data["data"]["source"] == "fallback_pool"
@@ -130,7 +114,6 @@ class TestVerseByDateView:
         from conftest import VerseFallbackPoolFactory
 
         VerseFallbackPoolFactory(is_active=True)
-
         response = auth_client.get(self._url("2025-08-20"))
         assert response.status_code == status.HTTP_200_OK
         assert str(response.data["data"]["display_date"]) == "2025-08-20"

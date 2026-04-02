@@ -1,18 +1,15 @@
 """Tests for apps.common.utils — OTP helpers, filename utils, notification data, and block cache."""
 
 from __future__ import annotations
-
 import hashlib
 import hmac
 from datetime import timedelta
 from unittest.mock import patch
-
 import pytest
 from django.conf import settings
 from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
-
 from apps.common.utils import (
     build_notification_data,
     generate_otp,
@@ -25,11 +22,6 @@ from apps.common.utils import (
     truncate_text,
     verify_otp,
 )
-
-
-# ---------------------------------------------------------------------------
-# generate_otp
-# ---------------------------------------------------------------------------
 
 
 class TestGenerateOtp:
@@ -49,20 +41,13 @@ class TestGenerateOtp:
     def test_different_otps_generated(self):
         """OTPs are random; generating many should produce at least some variety."""
         otps = {generate_otp() for _ in range(100)}
-        # With 6-digit codes, 100 draws should almost certainly produce > 1 unique
         assert len(otps) > 1
-
-
-# ---------------------------------------------------------------------------
-# hash_otp
-# ---------------------------------------------------------------------------
 
 
 class TestHashOtp:
     def test_returns_hex_string(self):
         h = hash_otp("123456")
         assert isinstance(h, str)
-        # SHA-256 hex digest is 64 chars
         assert len(h) == 64
 
     def test_is_hmac_sha256(self):
@@ -81,11 +66,6 @@ class TestHashOtp:
         assert hash_otp("123456") == hash_otp("123456")
 
 
-# ---------------------------------------------------------------------------
-# verify_otp
-# ---------------------------------------------------------------------------
-
-
 class TestVerifyOtp:
     def test_correct_otp_returns_true(self):
         otp = "123456"
@@ -101,11 +81,6 @@ class TestVerifyOtp:
         assert verify_otp("", hashed) is False
 
 
-# ---------------------------------------------------------------------------
-# get_otp_expiry
-# ---------------------------------------------------------------------------
-
-
 class TestGetOtpExpiry:
     def test_returns_future_datetime(self):
         expiry = get_otp_expiry()
@@ -115,7 +90,6 @@ class TestGetOtpExpiry:
         before = timezone.now()
         expiry = get_otp_expiry()
         after = timezone.now()
-        # Should be roughly 10 minutes from now
         assert before + timedelta(minutes=10) <= expiry <= after + timedelta(minutes=10)
 
     def test_custom_minutes(self):
@@ -127,11 +101,6 @@ class TestGetOtpExpiry:
     def test_returns_timezone_aware(self):
         expiry = get_otp_expiry()
         assert expiry.tzinfo is not None
-
-
-# ---------------------------------------------------------------------------
-# get_file_extension
-# ---------------------------------------------------------------------------
 
 
 class TestGetFileExtension:
@@ -160,11 +129,6 @@ class TestGetFileExtension:
         assert get_file_extension(f) == ""
 
 
-# ---------------------------------------------------------------------------
-# sanitize_filename
-# ---------------------------------------------------------------------------
-
-
 class TestSanitizeFilename:
     def test_normal_filename_unchanged(self):
         assert sanitize_filename("photo.jpg") == "photo.jpg"
@@ -181,7 +145,6 @@ class TestSanitizeFilename:
 
     def test_strips_unsafe_chars(self):
         result = sanitize_filename("file <name>.jpg")
-        # Angle brackets are removed
         assert "<" not in result
         assert ">" not in result
 
@@ -195,7 +158,6 @@ class TestSanitizeFilename:
 
     def test_empty_filename_returns_uuid_hex(self):
         result = sanitize_filename("")
-        # uuid4().hex is 32 chars
         assert len(result) == 32
 
     def test_all_unsafe_chars_returns_uuid(self):
@@ -204,11 +166,6 @@ class TestSanitizeFilename:
 
     def test_preserves_hyphens_and_underscores(self):
         assert sanitize_filename("my-file_name.txt") == "my-file_name.txt"
-
-
-# ---------------------------------------------------------------------------
-# truncate_text
-# ---------------------------------------------------------------------------
 
 
 class TestTruncateText:
@@ -234,11 +191,6 @@ class TestTruncateText:
 
     def test_empty_string(self):
         assert truncate_text("") == ""
-
-
-# ---------------------------------------------------------------------------
-# build_notification_data
-# ---------------------------------------------------------------------------
 
 
 class TestBuildNotificationData:
@@ -274,11 +226,6 @@ class TestBuildNotificationData:
         }
 
 
-# ---------------------------------------------------------------------------
-# get_blocked_user_ids / invalidate_blocked_user_cache
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.django_db
 class TestGetBlockedUserIds:
     def test_returns_set_of_ids(self, user, user2):
@@ -307,14 +254,11 @@ class TestGetBlockedUserIds:
         from conftest import BlockRelationshipFactory
 
         BlockRelationshipFactory(blocker=user, blocked=user2)
-        # First call populates cache
         result1 = get_blocked_user_ids(user.id)
-        # Second call should come from cache
-        with patch(
-            "apps.accounts.models.BlockRelationship.objects"
-        ):
+
+        with patch("apps.accounts.models.BlockRelationship.objects"):
             result2 = get_blocked_user_ids(user.id)
-        # Results should be the same
+
         assert result1 == result2
 
     def test_invalidate_cache(self, user, user2):
@@ -322,13 +266,114 @@ class TestGetBlockedUserIds:
 
         BlockRelationshipFactory(blocker=user, blocked=user2)
         get_blocked_user_ids(user.id)
-        # Cache should have an entry
         cache_key = f"blocked_user_ids:{user.id}"
         assert cache.get(cache_key) is not None
-
         invalidate_blocked_user_cache(user.id)
         assert cache.get(cache_key) is None
 
     def setup_method(self):
         """Clear cache before each test."""
         cache.clear()
+
+    def test_uses_cache_timeout_blocked_users_constant(self, user, user2):
+        """get_blocked_user_ids should use CACHE_TIMEOUT_BLOCKED_USERS (300s)."""
+        from conftest import BlockRelationshipFactory
+        from apps.common.constants import CACHE_TIMEOUT_BLOCKED_USERS
+
+        BlockRelationshipFactory(blocker=user, blocked=user2)
+        with patch.object(cache, "set", wraps=cache.set) as mock_set:
+            get_blocked_user_ids(user.id)
+            mock_set.assert_called_once()
+            call_kwargs = mock_set.call_args
+            # cache.set(key, result, timeout=CACHE_TIMEOUT_BLOCKED_USERS)
+            timeout_used = call_kwargs[1].get(
+                "timeout", call_kwargs[0][2] if len(call_kwargs[0]) > 2 else None
+            )
+            assert timeout_used == CACHE_TIMEOUT_BLOCKED_USERS
+            assert timeout_used == 300
+
+
+@pytest.mark.django_db
+class TestSendNotificationSafe:
+    """Tests for the send_notification_safe fire-and-forget helper."""
+
+    def test_does_not_raise_on_failure(self, user):
+        """send_notification_safe should swallow all exceptions."""
+        from apps.common.utils import send_notification_safe
+
+        with patch(
+            "apps.notifications.services.NotificationService.create_notification",
+            side_effect=Exception("Firebase is down"),
+        ):
+            # Should NOT raise
+            send_notification_safe(
+                recipient_id=user.id,
+                sender_id=None,
+                notification_type="follow",
+                title="Test",
+                body="Test body",
+            )
+
+    def test_calls_notification_service_create(self, user, user2):
+        """send_notification_safe should call NotificationService.create_notification."""
+        from apps.common.utils import send_notification_safe
+
+        with patch(
+            "apps.notifications.services.NotificationService.create_notification"
+        ) as mock_create:
+            send_notification_safe(
+                recipient_id=user.id,
+                sender_id=user2.id,
+                notification_type="comment",
+                title="New comment",
+                body="Someone commented on your post.",
+                data={"post_id": "abc"},
+            )
+            mock_create.assert_called_once_with(
+                recipient_id=user.id,
+                sender_id=user2.id,
+                notification_type="comment",
+                title="New comment",
+                body="Someone commented on your post.",
+                data={"post_id": "abc"},
+            )
+
+    def test_passes_empty_dict_when_data_is_none(self, user):
+        """When data=None, send_notification_safe should pass data={}."""
+        from apps.common.utils import send_notification_safe
+
+        with patch(
+            "apps.notifications.services.NotificationService.create_notification"
+        ) as mock_create:
+            send_notification_safe(
+                recipient_id=user.id,
+                notification_type="follow",
+                title="Followed",
+                body="You have a new follower.",
+                data=None,
+            )
+            mock_create.assert_called_once()
+            call_kwargs = mock_create.call_args[1]
+            assert call_kwargs["data"] == {}
+
+    def test_logs_warning_on_failure(self, user):
+        """send_notification_safe should log a warning when it catches an exception."""
+        import logging
+        from apps.common.utils import send_notification_safe
+
+        with (
+            patch(
+                "apps.notifications.services.NotificationService.create_notification",
+                side_effect=RuntimeError("boom"),
+            ),
+            patch.object(
+                logging.getLogger("apps.common.utils"), "warning"
+            ) as mock_warn,
+        ):
+            send_notification_safe(
+                recipient_id=user.id,
+                notification_type="follow",
+                title="Test",
+                body="Body",
+            )
+            mock_warn.assert_called_once()

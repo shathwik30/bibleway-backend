@@ -1,12 +1,9 @@
 """Tests for apps.shop.serializers — Product, Purchase, Download serializers."""
 
 from __future__ import annotations
-
 import uuid
-
 import pytest
 from rest_framework.test import APIRequestFactory
-
 from apps.shop.models import Product, Purchase, Download
 from apps.shop.serializers import (
     DownloadSerializer,
@@ -15,6 +12,7 @@ from apps.shop.serializers import (
     PurchaseCreateSerializer,
     PurchaseSerializer,
 )
+
 from conftest import UserFactory
 
 
@@ -25,6 +23,7 @@ def rf():
 
 def _create_product(**kwargs):
     """Create a Product without triggering UploadThing storage."""
+
     defaults = {
         "title": "Test Book",
         "description": "A test product",
@@ -33,17 +32,13 @@ def _create_product(**kwargs):
         "category": "books",
         "is_active": True,
     }
+
     defaults.update(kwargs)
+
     return Product.objects.create(**defaults)
 
 
-# ════════════════════════════════════════════════════════════════
-# PurchaseCreateSerializer
-# ════════════════════════════════════════════════════════════════
-
-
 class TestPurchaseCreateSerializer:
-
     def test_valid_ios_purchase(self):
         data = {
             "product_id": str(uuid.uuid4()),
@@ -76,31 +71,53 @@ class TestPurchaseCreateSerializer:
         assert "platform" in serializer.errors
 
     def test_missing_product_id(self):
-        data = {"platform": "ios", "receipt_data": "receipt", "transaction_id": "txn_123"}
+        data = {
+            "platform": "ios",
+            "receipt_data": "receipt",
+            "transaction_id": "txn_123",
+        }
         serializer = PurchaseCreateSerializer(data=data)
         assert not serializer.is_valid()
         assert "product_id" in serializer.errors
 
     def test_missing_receipt_data(self):
-        data = {"product_id": str(uuid.uuid4()), "platform": "ios", "transaction_id": "txn_123"}
+        data = {
+            "product_id": str(uuid.uuid4()),
+            "platform": "ios",
+            "transaction_id": "txn_123",
+        }
         serializer = PurchaseCreateSerializer(data=data)
         assert not serializer.is_valid()
         assert "receipt_data" in serializer.errors
 
     def test_missing_transaction_id(self):
-        data = {"product_id": str(uuid.uuid4()), "platform": "ios", "receipt_data": "receipt"}
+        data = {
+            "product_id": str(uuid.uuid4()),
+            "platform": "ios",
+            "receipt_data": "receipt",
+        }
         serializer = PurchaseCreateSerializer(data=data)
         assert not serializer.is_valid()
         assert "transaction_id" in serializer.errors
 
     def test_invalid_uuid_product_id(self):
-        data = {"product_id": "not-a-uuid", "platform": "ios", "receipt_data": "r", "transaction_id": "t"}
+        data = {
+            "product_id": "not-a-uuid",
+            "platform": "ios",
+            "receipt_data": "r",
+            "transaction_id": "t",
+        }
         serializer = PurchaseCreateSerializer(data=data)
         assert not serializer.is_valid()
         assert "product_id" in serializer.errors
 
     def test_empty_receipt_data_rejected(self):
-        data = {"product_id": str(uuid.uuid4()), "platform": "ios", "receipt_data": "", "transaction_id": "t"}
+        data = {
+            "product_id": str(uuid.uuid4()),
+            "platform": "ios",
+            "receipt_data": "",
+            "transaction_id": "t",
+        }
         serializer = PurchaseCreateSerializer(data=data)
         assert not serializer.is_valid()
         assert "receipt_data" in serializer.errors
@@ -112,14 +129,8 @@ class TestPurchaseCreateSerializer:
         assert field_choices == model_choices
 
 
-# ════════════════════════════════════════════════════════════════
-# ProductListSerializer
-# ════════════════════════════════════════════════════════════════
-
-
 @pytest.mark.django_db
 class TestProductListSerializer:
-
     def test_serializes_product_fields(self):
         product = _create_product()
         serializer = ProductListSerializer(product)
@@ -135,14 +146,8 @@ class TestProductListSerializer:
         assert "description" not in serializer.data
 
 
-# ════════════════════════════════════════════════════════════════
-# ProductDetailSerializer
-# ════════════════════════════════════════════════════════════════
-
-
 @pytest.mark.django_db
 class TestProductDetailSerializer:
-
     def test_includes_description(self):
         product = _create_product()
         serializer = ProductDetailSerializer(product, context={"request": None})
@@ -167,8 +172,11 @@ class TestProductDetailSerializer:
         user = UserFactory()
         product = _create_product(is_free=False, product_file="shop/test.pdf")
         Purchase.objects.create(
-            user=user, product=product, platform="ios",
-            receipt_data="test", transaction_id=f"txn_{uuid.uuid4().hex[:16]}",
+            user=user,
+            product=product,
+            platform="ios",
+            receipt_data="test",
+            transaction_id=f"txn_{uuid.uuid4().hex[:16]}",
             is_validated=True,
         )
         request = rf.get("/")
@@ -198,14 +206,8 @@ class TestProductDetailSerializer:
         assert serializer.data["download_url"] is None
 
 
-# ════════════════════════════════════════════════════════════════
-# DownloadSerializer
-# ════════════════════════════════════════════════════════════════
-
-
 @pytest.mark.django_db
 class TestDownloadSerializer:
-
     def test_serializes_download_record(self):
         user = UserFactory()
         product = _create_product()
@@ -225,20 +227,17 @@ class TestDownloadSerializer:
         assert "download_url" not in serializer.data
 
 
-# ════════════════════════════════════════════════════════════════
-# PurchaseSerializer
-# ════════════════════════════════════════════════════════════════
-
-
 @pytest.mark.django_db
 class TestPurchaseSerializer:
-
     def test_serializes_purchase_with_product(self):
         user = UserFactory()
         product = _create_product()
         purchase = Purchase.objects.create(
-            user=user, product=product, platform="ios",
-            receipt_data="test", transaction_id=f"txn_{uuid.uuid4().hex[:16]}",
+            user=user,
+            product=product,
+            platform="ios",
+            receipt_data="test",
+            transaction_id=f"txn_{uuid.uuid4().hex[:16]}",
             is_validated=True,
         )
         serializer = PurchaseSerializer(purchase)

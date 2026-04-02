@@ -7,46 +7,82 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
-    dependencies = [
-    ]
+    dependencies = []
 
     operations = [
         migrations.CreateModel(
-            name='VerseFallbackPool',
+            name="VerseFallbackPool",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_at', models.DateTimeField(auto_now_add=True, db_index=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('bible_reference', models.CharField(help_text="e.g., 'Psalm 23:1'", max_length=100)),
-                ('verse_text', models.TextField()),
-                ('background_image', models.ImageField(blank=True, default='', storage=apps.common.storage_backends.PublicMediaStorage(), upload_to=apps.verse_of_day.models.fallback_background_upload_path)),
-                ('is_active', models.BooleanField(db_index=True, default=True)),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True, db_index=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "bible_reference",
+                    models.CharField(help_text="e.g., 'Psalm 23:1'", max_length=100),
+                ),
+                ("verse_text", models.TextField()),
+                (
+                    "background_image",
+                    models.ImageField(
+                        blank=True,
+                        default="",
+                        storage=apps.common.storage_backends.PublicMediaStorage(),
+                        upload_to=apps.verse_of_day.models.fallback_background_upload_path,
+                    ),
+                ),
+                ("is_active", models.BooleanField(db_index=True, default=True)),
             ],
             options={
-                'verbose_name': 'verse fallback pool entry',
-                'verbose_name_plural': 'verse fallback pool entries',
-                'ordering': ['-created_at'],
+                "verbose_name": "verse fallback pool entry",
+                "verbose_name_plural": "verse fallback pool entries",
+                "ordering": ["-created_at"],
             },
         ),
         migrations.CreateModel(
-            name='VerseOfDay',
+            name="VerseOfDay",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_at', models.DateTimeField(auto_now_add=True, db_index=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('bible_reference', models.CharField(help_text="e.g., 'John 3:16'", max_length=100)),
-                ('verse_text', models.TextField()),
-                ('background_image', models.ImageField(blank=True, default='', storage=apps.common.storage_backends.PublicMediaStorage(), upload_to=apps.verse_of_day.models.verse_background_upload_path)),
-                ('display_date', models.DateField(db_index=True, unique=True)),
-                ('is_active', models.BooleanField(default=True)),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True, db_index=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "bible_reference",
+                    models.CharField(help_text="e.g., 'John 3:16'", max_length=100),
+                ),
+                ("verse_text", models.TextField()),
+                (
+                    "background_image",
+                    models.ImageField(
+                        blank=True,
+                        default="",
+                        storage=apps.common.storage_backends.PublicMediaStorage(),
+                        upload_to=apps.verse_of_day.models.verse_background_upload_path,
+                    ),
+                ),
+                ("display_date", models.DateField(db_index=True, unique=True)),
+                ("is_active", models.BooleanField(default=True)),
             ],
             options={
-                'verbose_name': 'verse of the day',
-                'verbose_name_plural': 'verses of the day',
-                'ordering': ['-display_date'],
+                "verbose_name": "verse of the day",
+                "verbose_name_plural": "verses of the day",
+                "ordering": ["-display_date"],
             },
         ),
     ]

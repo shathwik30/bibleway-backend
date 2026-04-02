@@ -1,23 +1,15 @@
 """Tests for apps.analytics.services — PostViewService, PostBoostService, AnalyticsService."""
 
 from __future__ import annotations
-
 import datetime
 from uuid import uuid4
-
 import pytest
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
-
 from apps.analytics.models import PostView
 from apps.analytics.services import AnalyticsService, PostBoostService, PostViewService
 from apps.common.exceptions import BadRequestError, ForbiddenError, NotFoundError
 from apps.social.models import Post
-
-
-# ---------------------------------------------------------------------------
-# PostViewService
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
@@ -62,12 +54,14 @@ class TestPostViewServiceRecordView:
             object_id=post.id,
             viewer_id=user2.id,
         )
-        # Should return the existing view, not create a new one
         assert view1.pk == view2.pk
         ct = ContentType.objects.get_for_model(Post)
-        assert PostView.objects.filter(
-            content_type=ct, object_id=post.id, viewer_id=user2.id
-        ).count() == 1
+        assert (
+            PostView.objects.filter(
+                content_type=ct, object_id=post.id, viewer_id=user2.id
+            ).count()
+            == 1
+        )
 
     def test_allows_new_view_after_one_hour(self, user, user2):
         from conftest import PostFactory
@@ -78,7 +72,6 @@ class TestPostViewServiceRecordView:
             object_id=post.id,
             viewer_id=user2.id,
         )
-        # Move the created_at to > 1 hour ago
         PostView.objects.filter(pk=view1.pk).update(
             created_at=timezone.now() - datetime.timedelta(hours=2)
         )
@@ -100,9 +93,7 @@ class TestPostViewServiceRecordView:
             content_type_model="post", object_id=post.id, viewer_id=None
         )
         ct = ContentType.objects.get_for_model(Post)
-        assert PostView.objects.filter(
-            content_type=ct, object_id=post.id
-        ).count() == 2
+        assert PostView.objects.filter(content_type=ct, object_id=post.id).count() == 2
 
     def test_invalid_content_type_raises(self, user):
         with pytest.raises(BadRequestError, match="Invalid content type"):
@@ -131,14 +122,12 @@ class TestPostViewServiceGetViewCount:
 
         post = PostFactory(author=user)
         user3 = UserFactory()
-
         self.service.record_view(
             content_type_model="post", object_id=post.id, viewer_id=user2.id
         )
         self.service.record_view(
             content_type_model="post", object_id=post.id, viewer_id=user3.id
         )
-
         count = self.service.get_view_count(
             content_type_model="post", object_id=post.id
         )
@@ -154,11 +143,6 @@ class TestPostViewServiceGetViewCount:
         assert count == 0
 
 
-# ---------------------------------------------------------------------------
-# PostBoostService
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.django_db
 class TestPostBoostServiceDeactivateExpired:
     def setup_method(self):
@@ -168,19 +152,14 @@ class TestPostBoostServiceDeactivateExpired:
         from conftest import PostBoostFactory, PostFactory
 
         post = PostFactory(author=user, is_boosted=True)
-
-        # Create an expired boost
         PostBoostFactory(
             post=post,
             user=user,
             is_active=True,
             expires_at=timezone.now() - datetime.timedelta(days=1),
         )
-
         count = self.service.deactivate_expired_boosts()
         assert count == 1
-
-        # Post should be un-boosted since no active boosts remain
         post.refresh_from_db()
         assert post.is_boosted is False
 
@@ -194,10 +173,8 @@ class TestPostBoostServiceDeactivateExpired:
             is_active=True,
             expires_at=timezone.now() + datetime.timedelta(days=3),
         )
-
         count = self.service.deactivate_expired_boosts()
         assert count == 0
-
         post.refresh_from_db()
         assert post.is_boosted is True
 
@@ -205,8 +182,6 @@ class TestPostBoostServiceDeactivateExpired:
         from conftest import PostBoostFactory, PostFactory
 
         post = PostFactory(author=user, is_boosted=True)
-
-        # One expired, one still active
         PostBoostFactory(
             post=post,
             user=user,
@@ -221,12 +196,9 @@ class TestPostBoostServiceDeactivateExpired:
             expires_at=timezone.now() + datetime.timedelta(days=5),
             transaction_id=f"active_{uuid4().hex[:8]}",
         )
-
         count = self.service.deactivate_expired_boosts()
         assert count == 1
-
         post.refresh_from_db()
-        # Post should remain boosted due to the second active boost
         assert post.is_boosted is True
 
     def test_returns_zero_when_nothing_expired(self, user):
@@ -244,8 +216,12 @@ class TestPostBoostServiceGetActive:
 
         post = PostFactory(author=user)
         PostBoostFactory(post=post, user=user, is_active=True)
-        PostBoostFactory(post=post, user=user, is_active=False, transaction_id=f"inactive_{uuid4().hex[:8]}")
-
+        PostBoostFactory(
+            post=post,
+            user=user,
+            is_active=False,
+            transaction_id=f"inactive_{uuid4().hex[:8]}",
+        )
         active = self.service.get_user_boosts(user_id=user.id, active_only=True)
         assert active.count() == 1
 
@@ -269,18 +245,12 @@ class TestPostBoostServiceGetBoostAnalytics:
             boost=boost,
             snapshot_date=timezone.now().date() - datetime.timedelta(days=1),
         )
-
         snapshots = self.service.get_boost_analytics(boost_id=boost.id)
         assert snapshots.count() == 2
 
     def test_get_boost_analytics_nonexistent_raises(self):
         with pytest.raises(NotFoundError):
             self.service.get_boost_analytics(boost_id=uuid4())
-
-
-# ---------------------------------------------------------------------------
-# AnalyticsService
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
@@ -297,7 +267,6 @@ class TestAnalyticsServicePostAnalytics:
         self.view_service.record_view(
             content_type_model="post", object_id=post.id, viewer_id=user2.id
         )
-
         result = self.analytics_service.get_post_analytics(
             post_id=post.id, requesting_user_id=user.id
         )
@@ -310,6 +279,7 @@ class TestAnalyticsServicePostAnalytics:
         from conftest import PostFactory
 
         post = PostFactory(author=user)
+
         with pytest.raises(ForbiddenError, match="only view analytics for your own"):
             self.analytics_service.get_post_analytics(
                 post_id=post.id, requesting_user_id=user2.id
@@ -319,6 +289,7 @@ class TestAnalyticsServicePostAnalytics:
         from conftest import PostFactory
 
         post = PostFactory(author=user)
+
         with pytest.raises(ForbiddenError):
             self.analytics_service.get_post_analytics(
                 post_id=post.id, requesting_user_id=None
@@ -348,7 +319,6 @@ class TestAnalyticsServiceUserAnalytics:
         self.view_service.record_view(
             content_type_model="post", object_id=post2.id, viewer_id=user2.id
         )
-
         analytics = self.analytics_service.get_user_analytics(user_id=user.id)
         assert analytics["post_count"] == 2
         assert analytics["total_views"] == 2
@@ -368,7 +338,6 @@ class TestAnalyticsServiceUserAnalytics:
         from conftest import PostFactory
 
         PostFactory(author=user)
-        PostFactory(author=user2)  # other user's post
-
+        PostFactory(author=user2)
         analytics = self.analytics_service.get_user_analytics(user_id=user.id)
         assert analytics["post_count"] == 1

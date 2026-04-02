@@ -1,19 +1,17 @@
 """Tests for accounts app models: User, FollowRelationship, BlockRelationship, OTPToken."""
 
 from __future__ import annotations
-
 import datetime
-
 import pytest
 from django.db import IntegrityError
 from django.utils import timezone
-
 from apps.accounts.models import (
     BlockRelationship,
     FollowRelationship,
     OTPToken,
     User,
 )
+
 from conftest import (
     BlockRelationshipFactory,
     FollowRelationshipFactory,
@@ -121,6 +119,7 @@ class TestCustomUserManager:
             gender="male",
             country="US",
         )
+
         with pytest.raises(IntegrityError):
             User.objects.create_user(
                 email="dup@example.com",
@@ -202,14 +201,17 @@ class TestFollowRelationshipModel:
         user_a = UserFactory()
         user_b = UserFactory()
         FollowRelationshipFactory(follower=user_a, following=user_b)
+
         with pytest.raises(IntegrityError):
             FollowRelationshipFactory(follower=user_a, following=user_b)
 
     def test_self_follow_constraint(self):
         user = UserFactory()
+
         with pytest.raises(IntegrityError):
             FollowRelationship.objects.create(
-                follower=user, following=user,
+                follower=user,
+                following=user,
             )
 
     def test_ordering_by_created_at_desc(self):
@@ -219,7 +221,6 @@ class TestFollowRelationshipModel:
         user_a = UserFactory()
         user_b = UserFactory()
         FollowRelationshipFactory(follower=user_a, following=user_b)
-
         assert user_a.following_relationships.count() == 1
         assert user_b.follower_relationships.count() == 1
 
@@ -254,11 +255,13 @@ class TestBlockRelationshipModel:
         user_a = UserFactory()
         user_b = UserFactory()
         BlockRelationshipFactory(blocker=user_a, blocked=user_b)
+
         with pytest.raises(IntegrityError):
             BlockRelationshipFactory(blocker=user_a, blocked=user_b)
 
     def test_self_block_constraint(self):
         user = UserFactory()
+
         with pytest.raises(IntegrityError):
             BlockRelationship.objects.create(blocker=user, blocked=user)
 
@@ -269,7 +272,6 @@ class TestBlockRelationshipModel:
         user_a = UserFactory()
         user_b = UserFactory()
         BlockRelationshipFactory(blocker=user_a, blocked=user_b)
-
         assert user_a.blocking_relationships.count() == 1
         assert user_b.blocked_by_relationships.count() == 1
 
@@ -279,13 +281,10 @@ class TestBlockRelationshipModel:
         user_b = UserFactory()
         FollowRelationshipFactory(follower=user_a, following=user_b)
         FollowRelationshipFactory(follower=user_b, following=user_a)
-
         assert FollowRelationship.objects.filter(
             follower=user_a, following=user_b
         ).exists()
-
         BlockRelationshipFactory(blocker=user_a, blocked=user_b)
-
         assert not FollowRelationship.objects.filter(
             follower=user_a, following=user_b
         ).exists()
@@ -334,9 +333,7 @@ class TestOTPTokenModel:
         assert otp.is_expired is False
 
     def test_is_expired_true_when_past(self):
-        otp = OTPTokenFactory(
-            expires_at=timezone.now() - datetime.timedelta(minutes=1)
-        )
+        otp = OTPTokenFactory(expires_at=timezone.now() - datetime.timedelta(minutes=1))
         assert otp.is_expired is True
 
     def test_is_max_attempts_false_when_below(self):

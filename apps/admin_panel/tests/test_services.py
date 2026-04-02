@@ -10,12 +10,9 @@ Covers:
 """
 
 from __future__ import annotations
-
 import uuid
-
 import pytest
 from django.contrib.contenttypes.models import ContentType
-
 from apps.admin_panel.models import AdminLog, AdminRole, BoostTier
 from apps.admin_panel.services import (
     AdminBibleService,
@@ -25,10 +22,10 @@ from apps.admin_panel.services import (
     AdminModerationService,
     AdminUserService,
 )
+
 from apps.bible.models import SegregatedChapter, SegregatedPage, SegregatedSection
 from apps.notifications.models import Notification
 from apps.social.models import Report
-
 from conftest import (
     AdminRoleFactory,
     BoostTierFactory,
@@ -37,27 +34,26 @@ from conftest import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture
 def admin_staff(db):
     """Return a staff user with a super_admin AdminRole."""
+
     role = AdminRoleFactory(role="super_admin")
+
     return role.user
 
 
 @pytest.fixture
 def target_user(db):
     """Return a regular user to be acted upon."""
+
     return UserFactory()
 
 
 @pytest.fixture
 def section(db, admin_staff):
     """Create and return a SegregatedSection."""
+
     return AdminBibleService.create_section(
         admin_user=admin_staff,
         title="Ages 5-8",
@@ -70,6 +66,7 @@ def section(db, admin_staff):
 @pytest.fixture
 def chapter(db, admin_staff, section):
     """Create and return a SegregatedChapter."""
+
     return AdminBibleService.create_chapter(
         admin_user=admin_staff,
         section_id=section.pk,
@@ -81,6 +78,7 @@ def chapter(db, admin_staff, section):
 @pytest.fixture
 def page(db, admin_staff, chapter):
     """Create and return a SegregatedPage."""
+
     return AdminBibleService.create_page(
         admin_user=admin_staff,
         chapter_id=chapter.pk,
@@ -88,11 +86,6 @@ def page(db, admin_staff, chapter):
         content="This is the content of page 1.",
         order=0,
     )
-
-
-# ---------------------------------------------------------------------------
-# AdminLogService
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
@@ -168,15 +161,12 @@ class TestAdminLogService:
 
     def test_get_recent_logs_limit(self, admin_staff):
         """get_recent_logs respects the limit parameter."""
+
         for i in range(5):
             AdminLogService.log_action(admin_staff, "create", "m.A", str(i))
+
         recent = AdminLogService.get_recent_logs(limit=3)
         assert len(recent) == 3
-
-
-# ---------------------------------------------------------------------------
-# AdminUserService
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
@@ -290,11 +280,6 @@ class TestAdminUserService:
         assert "followers_count" in detail
 
 
-# ---------------------------------------------------------------------------
-# AdminModerationService
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.django_db
 class TestAdminModerationService:
     """Tests for AdminModerationService."""
@@ -312,6 +297,7 @@ class TestAdminModerationService:
             reason="spam",
             status="pending",
         )
+
         return post, report
 
     def test_list_reports(self, post_with_report):
@@ -345,7 +331,6 @@ class TestAdminModerationService:
 
     def test_remove_content(self, admin_staff, post_with_report):
         """remove_content deletes the reported object and marks the report reviewed.
-
         NOTE: Django 5.x raises ValueError when saving a model instance whose
         GenericForeignKey points to a just-deleted object.  Because the
         ``remove_content`` method runs inside ``@transaction.atomic``, the
@@ -363,13 +348,11 @@ class TestAdminModerationService:
 
         try:
             AdminModerationService.remove_content(admin_staff, report.pk)
+
         except ValueError:
-            # Django 5.x prevents save after deleting a GenericFK target.
-            # The atomic block rolls back, so the post still exists.
             assert Post.objects.filter(pk=post_pk).exists()
             return
 
-        # If Django is lenient (future fix or older Django), the call succeeds.
         report.refresh_from_db()
         assert report.status == Report.Status.REVIEWED
         assert report.reviewed_by == admin_staff
@@ -400,11 +383,6 @@ class TestAdminModerationService:
         assert result.status == Report.Status.REVIEWED
         post.author.refresh_from_db()
         assert post.author.is_active is False
-
-
-# ---------------------------------------------------------------------------
-# AdminBoostService (tiers)
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
@@ -473,16 +451,9 @@ class TestAdminBoostService:
         assert "revenue_by_tier" in stats
 
 
-# ---------------------------------------------------------------------------
-# AdminBibleService
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.django_db
 class TestAdminBibleService:
     """Tests for AdminBibleService: sections, chapters, and pages CRUD."""
-
-    # -- Sections --
 
     def test_create_section(self, admin_staff):
         """create_section creates a section and logs the action."""
@@ -537,8 +508,6 @@ class TestAdminBibleService:
         assert not SegregatedChapter.objects.filter(pk=chapter.pk).exists()
         assert not SegregatedPage.objects.filter(pk=page.pk).exists()
 
-    # -- Chapters --
-
     def test_create_chapter(self, admin_staff, section):
         """create_chapter creates a chapter and logs the action."""
         chapter = AdminBibleService.create_chapter(
@@ -577,17 +546,27 @@ class TestAdminBibleService:
     def test_reorder_chapters(self, admin_staff, section):
         """reorder_chapters updates the order of chapters."""
         ch1 = AdminBibleService.create_chapter(
-            admin_staff, section.pk, "Ch 1", order=0,
+            admin_staff,
+            section.pk,
+            "Ch 1",
+            order=0,
         )
         ch2 = AdminBibleService.create_chapter(
-            admin_staff, section.pk, "Ch 2", order=1,
+            admin_staff,
+            section.pk,
+            "Ch 2",
+            order=1,
         )
         ch3 = AdminBibleService.create_chapter(
-            admin_staff, section.pk, "Ch 3", order=2,
+            admin_staff,
+            section.pk,
+            "Ch 3",
+            order=2,
         )
-        # Reverse the order.
         result_qs = AdminBibleService.reorder_chapters(
-            admin_staff, section.pk, [ch3.pk, ch2.pk, ch1.pk],
+            admin_staff,
+            section.pk,
+            [ch3.pk, ch2.pk, ch1.pk],
         )
         result = list(result_qs)
         assert result[0].pk == ch3.pk
@@ -596,8 +575,6 @@ class TestAdminBibleService:
         assert result[1].order == 1
         assert result[2].pk == ch1.pk
         assert result[2].order == 2
-
-    # -- Pages --
 
     def test_create_page(self, admin_staff, chapter):
         """create_page creates a page and logs the action."""
@@ -649,7 +626,6 @@ class TestAdminBibleService:
             translated_content="Contenido traducido.",
         )
         assert TranslatedPageCache.objects.filter(page=page).count() == 1
-
         AdminBibleService.update_page(
             admin_user=admin_staff,
             page_id=page.pk,
@@ -662,11 +638,6 @@ class TestAdminBibleService:
         pk = page.pk
         AdminBibleService.delete_page(admin_staff, pk)
         assert not SegregatedPage.objects.filter(pk=pk).exists()
-
-
-# ---------------------------------------------------------------------------
-# AdminDashboardService
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
@@ -701,6 +672,7 @@ class TestAdminDashboardService:
         UserFactory()
         data = AdminDashboardService.get_user_growth_data(days=7)
         assert isinstance(data, list)
+
         if data:
             assert "date" in data[0]
             assert "count" in data[0]

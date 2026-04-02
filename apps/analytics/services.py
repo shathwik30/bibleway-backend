@@ -1,58 +1,54 @@
 from __future__ import annotations
-
 import logging
 from datetime import timedelta
 from typing import Any
 from uuid import UUID
-
 from django.contrib.contenttypes.models import ContentType
 from django.db import IntegrityError, transaction
-from django.db.models import Count, QuerySet, Subquery
+from django.db.models import Count, Q, QuerySet, Subquery
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
+from apps.common.exceptions import (
+    BadRequestError,
+    ConflictError,
+    ForbiddenError,
+    NotFoundError,
+)
 
-from apps.common.exceptions import BadRequestError, ConflictError, ForbiddenError, NotFoundError
 from apps.common.services import BaseService
 from apps.social.models import Post
-
 from .models import BoostAnalyticSnapshot, PostBoost, PostView
 from ..shop.validators import validate_apple_receipt, validate_google_receipt
 
 logger = logging.getLogger(__name__)
 
-
-# ---------------------------------------------------------------------------
-# Content-type resolution helper
-# ---------------------------------------------------------------------------
-
-
 VIEWABLE_MODELS: dict[str, type] = {
     "post": Post,
 }
 
-# Lazy import to avoid circular dependency; Prayer is in the same social app
 try:
     from apps.social.models import Prayer
+
     VIEWABLE_MODELS["prayer"] = Prayer
+
 except ImportError:  # pragma: no cover
     pass
 
 
 def _resolve_viewable_content_type(model_name: str) -> ContentType:
     """Resolve a model name to a ContentType for view tracking."""
+
     model_name = model_name.lower()
+
     model_class = VIEWABLE_MODELS.get(model_name)
+
     if model_class is None:
         raise BadRequestError(
             detail=f"Invalid content type '{model_name}'. "
             f"Must be one of: {', '.join(sorted(VIEWABLE_MODELS.keys()))}."
         )
+
     return ContentType.objects.get_for_model(model_class)
-
-
-# ---------------------------------------------------------------------------
-# PostViewService
-# ---------------------------------------------------------------------------
 
 
 class PostViewService(BaseService[PostView]):
@@ -69,22 +65,22 @@ class PostViewService(BaseService[PostView]):
         view_type: str = PostView.ViewType.VIEW,
     ) -> PostView:
         """Record a view or share on a post or prayer.
-
         Anonymous views are allowed (viewer_id=None).
         De-duplicates views from the same user on the same content
         within a 1-hour window to avoid inflated counts.
         Shares are never de-duplicated (each share is a distinct action).
         """
         ct = _resolve_viewable_content_type(content_type_model)
-
-        # Validate that the referenced object actually exists
         model_class = ct.model_class()
-        if model_class is not None and not model_class.objects.filter(pk=object_id).exists():
+
+        if (
+            model_class is not None
+            and not model_class.objects.filter(pk=object_id).exists()
+        ):
             raise NotFoundError(
                 detail=f"{content_type_model.capitalize()} with id '{object_id}' not found."
             )
 
-        # De-duplicate views (not shares) from the same user within the last hour
         if view_type == PostView.ViewType.VIEW and viewer_id is not None:
             one_hour_ago = timezone.now() - timedelta(hours=1)
             existing = PostView.objects.filter(
@@ -94,14 +90,18 @@ class PostViewService(BaseService[PostView]):
                 view_type=PostView.ViewType.VIEW,
                 created_at__gte=one_hour_ago,
             ).exists()
+
             if existing:
-                # Return the most recent view instead of creating a duplicate
-                return PostView.objects.filter(
-                    content_type=ct,
-                    object_id=object_id,
-                    viewer_id=viewer_id,
-                    view_type=PostView.ViewType.VIEW,
-                ).order_by("-created_at").first()
+                return (
+                    PostView.objects.filter(
+                        content_type=ct,
+                        object_id=object_id,
+                        viewer_id=viewer_id,
+                        view_type=PostView.ViewType.VIEW,
+                    )
+                    .order_by("-created_at")
+                    .first()
+                )
 
         view = PostView.objects.create(
             content_type=ct,
@@ -109,6 +109,7 @@ class PostViewService(BaseService[PostView]):
             viewer_id=viewer_id,
             view_type=view_type,
         )
+
         return view
 
     def get_view_count(
@@ -119,8 +120,11 @@ class PostViewService(BaseService[PostView]):
     ) -> int:
         """Return total view count for a piece of content."""
         ct = _resolve_viewable_content_type(content_type_model)
+
         return PostView.objects.filter(
-            content_type=ct, object_id=object_id, view_type=PostView.ViewType.VIEW,
+            content_type=ct,
+            object_id=object_id,
+            view_type=PostView.ViewType.VIEW,
         ).count()
 
     def get_share_count(
@@ -131,14 +135,12 @@ class PostViewService(BaseService[PostView]):
     ) -> int:
         """Return total share count for a piece of content."""
         ct = _resolve_viewable_content_type(content_type_model)
+
         return PostView.objects.filter(
-            content_type=ct, object_id=object_id, view_type=PostView.ViewType.SHARE,
+            content_type=ct,
+            object_id=object_id,
+            view_type=PostView.ViewType.SHARE,
         ).count()
-
-
-# ---------------------------------------------------------------------------
-# PostBoostService
-# ---------------------------------------------------------------------------
 
 
 class PostBoostService(BaseService[PostBoost]):
@@ -162,32 +164,27 @@ class PostBoostService(BaseService[PostBoost]):
         duration_days: int,
     ) -> PostBoost:
         """Activate a new boost for a post.
-
         - Validates the receipt with Apple/Google before proceeding.
         - Validates the transaction_id is unique.
         - Verifies the user owns the post.
         - Sets activation and expiry timestamps.
         - Marks the post as boosted.
         """
+
         try:
             post = Post.objects.get(pk=post_id)
-        except Post.DoesNotExist:
-            raise NotFoundError(
-                detail=f"Post with id '{post_id}' not found."
-            )
 
-        # Verify the user owns the post
+        except Post.DoesNotExist:
+            raise NotFoundError(detail=f"Post with id '{post_id}' not found.")
+
         if post.author_id != user_id:
-            raise ForbiddenError(
-                detail="You can only boost your own posts."
-            )
+            raise ForbiddenError(detail="You can only boost your own posts.")
 
         if PostBoost.objects.filter(transaction_id=transaction_id).exists():
             raise ConflictError(
                 detail=f"Transaction '{transaction_id}' has already been processed."
             )
 
-        # Receipt is required -- boosts are paid features
         if not receipt_data:
             raise ValidationError("Receipt data is required for boost activation.")
 
@@ -197,19 +194,21 @@ class PostBoostService(BaseService[PostBoost]):
                     receipt_data,
                     expected_product_id=tier,
                 )
+
             elif platform == PostBoost.Platform.ANDROID:
                 validate_google_receipt(
                     product_id=tier,
                     purchase_token=receipt_data,
                 )
+
             else:
                 raise ValidationError(f"Unsupported platform: {platform}")
+
         except ValueError as exc:
-            raise ValidationError(
-                f"Receipt validation failed: {exc}"
-            )
+            raise ValidationError(f"Receipt validation failed: {exc}")
 
         now = timezone.now()
+
         try:
             boost = PostBoost.objects.create(
                 post_id=post_id,
@@ -222,14 +221,13 @@ class PostBoostService(BaseService[PostBoost]):
                 activated_at=now,
                 expires_at=now + timedelta(days=duration_days),
             )
+
         except IntegrityError:
             raise ConflictError(
                 detail=f"Transaction '{transaction_id}' has already been processed."
             )
 
-        # Mark the post as boosted
         Post.objects.filter(pk=post_id).update(is_boosted=True)
-
         logger.info(
             "Boost activated: post=%s user=%s tier=%s duration=%dd",
             post_id,
@@ -238,7 +236,6 @@ class PostBoostService(BaseService[PostBoost]):
             duration_days,
         )
 
-        # Notify the post owner that their boost is live
         try:
             from apps.common.utils import build_notification_data
             from apps.notifications.services import NotificationService
@@ -251,6 +248,7 @@ class PostBoostService(BaseService[PostBoost]):
                 body=f"Your post is now being promoted for {duration_days} days.",
                 data=build_notification_data("boost_live", post_id=post_id),
             )
+
         except Exception:
             logger.warning(
                 "Failed to send boost_live notification for post=%s",
@@ -262,19 +260,13 @@ class PostBoostService(BaseService[PostBoost]):
 
     def deactivate_expired_boosts(self) -> int:
         """Deactivate all boosts that have passed their expiry date.
-
         Returns the number of boosts deactivated.
         """
         now = timezone.now()
-        expired_boosts = PostBoost.objects.filter(
-            is_active=True, expires_at__lte=now
-        )
-
-        # Collect post IDs to potentially un-boost
+        expired_boosts = PostBoost.objects.filter(is_active=True, expires_at__lte=now)
         post_ids = list(expired_boosts.values_list("post_id", flat=True))
         count = expired_boosts.update(is_active=False)
 
-        # Un-boost posts that no longer have active boosts
         if post_ids:
             still_boosted_post_ids = set(
                 PostBoost.objects.filter(
@@ -282,12 +274,12 @@ class PostBoostService(BaseService[PostBoost]):
                 ).values_list("post_id", flat=True)
             )
             unboosted_post_ids = set(post_ids) - still_boosted_post_ids
+
             if unboosted_post_ids:
-                Post.objects.filter(pk__in=unboosted_post_ids).update(
-                    is_boosted=False
-                )
+                Post.objects.filter(pk__in=unboosted_post_ids).update(is_boosted=False)
 
         logger.info("Deactivated %d expired boosts.", count)
+
         return count
 
     def get_user_boosts(
@@ -295,8 +287,10 @@ class PostBoostService(BaseService[PostBoost]):
     ) -> QuerySet[PostBoost]:
         """Return boosts for a user. Optionally filter to active only."""
         qs = self.get_queryset().filter(user_id=user_id)
+
         if active_only:
             qs = qs.filter(is_active=True)
+
         return qs
 
     def get_boost_analytics(
@@ -305,18 +299,13 @@ class PostBoostService(BaseService[PostBoost]):
         boost_id: UUID,
     ) -> QuerySet[BoostAnalyticSnapshot]:
         """Return analytics snapshots for a specific boost."""
+
         if not PostBoost.objects.filter(pk=boost_id).exists():
-            raise NotFoundError(
-                detail=f"Boost with id '{boost_id}' not found."
-            )
-        return BoostAnalyticSnapshot.objects.filter(
-            boost_id=boost_id
-        ).order_by("-snapshot_date")
+            raise NotFoundError(detail=f"Boost with id '{boost_id}' not found.")
 
-
-# ---------------------------------------------------------------------------
-# AnalyticsService
-# ---------------------------------------------------------------------------
+        return BoostAnalyticSnapshot.objects.filter(boost_id=boost_id).order_by(
+            "-snapshot_date"
+        )
 
 
 class AnalyticsService:
@@ -332,48 +321,40 @@ class AnalyticsService:
         requesting_user_id: UUID | None = None,
     ) -> dict[str, int]:
         """Return aggregate analytics for a single post.
-
         Returns counts for views, reactions, comments, and shares.
         Only the post author may view analytics for their post.
         """
+
         try:
             post_obj = Post.objects.get(pk=post_id)
-        except Post.DoesNotExist:
-            raise NotFoundError(
-                detail=f"Post with id '{post_id}' not found."
-            )
 
-        # Authorization: only the post author may view analytics
+        except Post.DoesNotExist:
+            raise NotFoundError(detail=f"Post with id '{post_id}' not found.")
+
         if requesting_user_id is None or post_obj.author_id != requesting_user_id:
             raise ForbiddenError(
                 detail="You can only view analytics for your own posts."
             )
 
         ct = ContentType.objects.get_for_model(Post)
-
-        view_count = PostView.objects.filter(
-            content_type=ct, object_id=post_id, view_type=PostView.ViewType.VIEW,
-        ).count()
-
-        share_count = PostView.objects.filter(
-            content_type=ct, object_id=post_id, view_type=PostView.ViewType.SHARE,
-        ).count()
-
-        post = Post.objects.filter(pk=post_id).annotate(
-            reaction_count=Count("reactions", distinct=True),
-            comment_count=Count("comments", distinct=True),
-        ).first()
+        post = Post.objects.filter(pk=post_id).first()
+        view_counts = PostView.objects.filter(
+            content_type=ct,
+            object_id=post_id,
+        ).aggregate(
+            views=Count("pk", filter=Q(view_type=PostView.ViewType.VIEW)),
+            shares=Count("pk", filter=Q(view_type=PostView.ViewType.SHARE)),
+        )
 
         return {
-            "views": view_count,
+            "views": view_counts["views"],
             "reactions": post.reaction_count if post else 0,
             "comments": post.comment_count if post else 0,
-            "shares": share_count,
+            "shares": view_counts["shares"],
         }
 
     def get_user_analytics(self, *, user_id: UUID) -> dict[str, Any]:
         """Return aggregate analytics for all of a user's posts.
-
         Returns total views, reactions, comments, and post count.
         Uses subquery approach for better performance instead of
         materializing all post IDs.
@@ -390,13 +371,10 @@ class AnalyticsService:
             }
 
         ct = ContentType.objects.get_for_model(Post)
-
-        # Use subquery instead of materializing all post IDs
         post_ids_subquery = user_posts.values("pk")
         total_views = PostView.objects.filter(
             content_type=ct, object_id__in=Subquery(post_ids_subquery)
         ).count()
-
         aggregates = user_posts.aggregate(
             total_reactions=Count("reactions", distinct=True),
             total_comments=Count("comments", distinct=True),

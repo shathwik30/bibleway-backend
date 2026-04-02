@@ -1,14 +1,11 @@
 """Tests for apps.bible.views — API endpoints for segregated Bible content."""
 
 from __future__ import annotations
-
 import uuid
 from unittest.mock import patch
-
 import pytest
 from django.contrib.contenttypes.models import ContentType
 from rest_framework import status
-
 from apps.bible.models import (
     Bookmark,
     Highlight,
@@ -22,14 +19,10 @@ from apps.bible.models import (
 from conftest import UserFactory
 
 
-# ──────────────────────────────────────────────────────────────
-# Helper fixtures
-# ──────────────────────────────────────────────────────────────
-
-
 @pytest.fixture
 def section(db):
     """Create an active section."""
+
     return SegregatedSection.objects.create(
         title="Ages 5-8",
         age_min=5,
@@ -42,6 +35,7 @@ def section(db):
 @pytest.fixture
 def section2(db):
     """Create a second active section."""
+
     return SegregatedSection.objects.create(
         title="Ages 9-12",
         age_min=9,
@@ -54,6 +48,7 @@ def section2(db):
 @pytest.fixture
 def chapter(section):
     """Create an active chapter in a section."""
+
     return SegregatedChapter.objects.create(
         section=section,
         title="Chapter 1: Creation",
@@ -65,6 +60,7 @@ def chapter(section):
 @pytest.fixture
 def chapter2(section):
     """Create a second active chapter in a section."""
+
     return SegregatedChapter.objects.create(
         section=section,
         title="Chapter 2: The Fall",
@@ -76,6 +72,7 @@ def chapter2(section):
 @pytest.fixture
 def page(chapter):
     """Create an active page in a chapter."""
+
     return SegregatedPage.objects.create(
         chapter=chapter,
         title="Page 1: In the Beginning",
@@ -88,6 +85,7 @@ def page(chapter):
 @pytest.fixture
 def page2(chapter):
     """Create a second active page in a chapter."""
+
     return SegregatedPage.objects.create(
         chapter=chapter,
         title="Page 2: Let There Be Light",
@@ -98,9 +96,13 @@ def page2(chapter):
 
 
 SECTIONS_URL = "/api/v1/bible/sections/"
+
 BOOKMARKS_URL = "/api/v1/bible/bookmarks/"
+
 HIGHLIGHTS_URL = "/api/v1/bible/highlights/"
+
 NOTES_URL = "/api/v1/bible/notes/"
+
 SEARCH_URL = "/api/v1/bible/search/"
 
 
@@ -110,11 +112,15 @@ def _paginated_results(response):
     For StandardPageNumberPagination: {"message": ..., "data": {"results": [...]}}
     For ViewSet pagination: same format via BaseModelViewSet.
     """
+
     data = response.data
+
     if "data" in data and isinstance(data["data"], dict) and "results" in data["data"]:
         return data["data"]["results"]
+
     if "results" in data:
         return data["results"]
+
     return []
 
 
@@ -132,11 +138,6 @@ def _page_detail_url(page_id):
 
 def _page_comments_url(page_id):
     return f"/api/v1/bible/pages/{page_id}/comments/"
-
-
-# ──────────────────────────────────────────────────────────────
-# GET /api/v1/bible/sections/  (SegregatedSectionListView)
-# ──────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -164,7 +165,16 @@ class TestSegregatedSectionListView:
     def test_section_fields(self, auth_client, section):
         response = auth_client.get(self.url)
         data = response.data["data"][0]
-        for field in ("id", "title", "age_min", "age_max", "order", "is_active", "chapter_count"):
+
+        for field in (
+            "id",
+            "title",
+            "age_min",
+            "age_max",
+            "order",
+            "is_active",
+            "chapter_count",
+        ):
             assert field in data
 
     def test_chapter_count_annotation(self, auth_client, section, chapter, chapter2):
@@ -174,21 +184,48 @@ class TestSegregatedSectionListView:
         assert section_data["chapter_count"] == 2
 
     def test_unauthenticated_still_works(self, api_client, section):
-        # SegregatedSectionListView inherits from BaseAPIView with IsAuthenticated
-        # but the view doesn't set permission_classes, so it uses the default
         response = api_client.get(self.url)
-        # If default is IsAuthenticated, this should be 401
-        assert response.status_code in (status.HTTP_200_OK, status.HTTP_401_UNAUTHORIZED)
+        assert response.status_code in (
+            status.HTTP_200_OK,
+            status.HTTP_401_UNAUTHORIZED,
+        )
 
+    def test_returns_etag_header(self, auth_client, section):
+        """GET /bible/sections/ should include an ETag header."""
+        response = auth_client.get(self.url)
+        assert response.status_code == status.HTTP_200_OK
+        assert "ETag" in response
 
-# ──────────────────────────────────────────────────────────────
-# GET /api/v1/bible/sections/<section_id>/chapters/  (ChapterListView)
-# ──────────────────────────────────────────────────────────────
+    def test_if_none_match_matching_etag_returns_304(self, auth_client, section):
+        """GET with If-None-Match matching ETag returns 304 Not Modified."""
+        # First request to prime the cache and get the ETag
+        response1 = auth_client.get(self.url)
+        assert response1.status_code == status.HTTP_200_OK
+        etag = response1["ETag"]
+        assert etag  # ETag should be non-empty
+
+        # Second request with matching If-None-Match should return 304
+        response2 = auth_client.get(self.url, HTTP_IF_NONE_MATCH=etag)
+        assert response2.status_code == 304
+
+    def test_if_none_match_non_matching_etag_returns_200(self, auth_client, section):
+        """GET with non-matching If-None-Match returns 200 with data."""
+        # First request to prime the cache
+        response1 = auth_client.get(self.url)
+        assert response1.status_code == status.HTTP_200_OK
+
+        # Second request with a non-matching ETag
+        response2 = auth_client.get(
+            self.url, HTTP_IF_NONE_MATCH="non-matching-etag-value"
+        )
+        assert response2.status_code == status.HTTP_200_OK
+        assert "ETag" in response2
+        # Should return actual data
+        assert response2.data["data"] is not None
 
 
 @pytest.mark.django_db
 class TestChapterListView:
-
     def test_list_chapters(self, auth_client, section, chapter, chapter2):
         url = _chapters_url(section.pk)
         response = auth_client.get(url)
@@ -219,7 +256,10 @@ class TestChapterListView:
         response = auth_client.get(url)
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
-    def test_chapter_page_count_annotation(self, auth_client, section, chapter, page, page2):
+    def test_chapter_page_count_annotation(
+        self, auth_client, section, chapter, page, page2
+    ):
+
         url = _chapters_url(section.pk)
         response = auth_client.get(url)
         data = response.data["data"]
@@ -230,18 +270,13 @@ class TestChapterListView:
         url = _chapters_url(section.pk)
         response = auth_client.get(url)
         ch = response.data["data"][0]
+
         for field in ("id", "section", "title", "order", "is_active", "page_count"):
             assert field in ch
 
 
-# ──────────────────────────────────────────────────────────────
-# GET /api/v1/bible/chapters/<chapter_id>/pages/  (PageListView)
-# ──────────────────────────────────────────────────────────────
-
-
 @pytest.mark.django_db
 class TestPageListView:
-
     def test_list_pages(self, auth_client, chapter, page, page2):
         url = _pages_url(chapter.pk)
         response = auth_client.get(url)
@@ -271,18 +306,11 @@ class TestPageListView:
         url = _pages_url(chapter.pk)
         response = auth_client.get(url)
         pg = response.data["data"][0]
-        # PageListSerializer should NOT include "content" (full body)
         assert "content" not in pg
-
-
-# ──────────────────────────────────────────────────────────────
-# GET /api/v1/bible/pages/<page_id>/  (PageDetailView)
-# ──────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
 class TestPageDetailView:
-
     def test_get_page_detail(self, auth_client, page):
         url = _page_detail_url(page.pk)
         response = auth_client.get(url)
@@ -317,12 +345,13 @@ class TestPageDetailView:
 
     @patch("apps.bible.services.BibleTranslationService._call_google_translate")
     def test_page_detail_with_translation(self, mock_translate, auth_client, page):
-        mock_translate.return_value = "En el principio Dios creo los cielos y la tierra."
+        mock_translate.return_value = (
+            "En el principio Dios creo los cielos y la tierra."
+        )
         url = _page_detail_url(page.pk)
         response = auth_client.get(url, {"lang": "es"})
         assert response.status_code == status.HTTP_200_OK
         data = response.data["data"]
-        # After translation, content should be the translated text
         assert "principio" in data["content"] or "beginning" in data["content"]
 
     def test_page_detail_with_cached_translation(self, auth_client, page):
@@ -357,12 +386,11 @@ class TestPageCommentCreateView:
         )
         assert response.status_code == status.HTTP_201_CREATED
         from apps.bible.models import SegregatedPageComment
+
         assert SegregatedPageComment.objects.filter(page=page).count() == 1
 
     def test_create_comment_missing_content(self, auth_client, page):
-        response = auth_client.post(
-            _page_comments_url(page.id), {}, format="json"
-        )
+        response = auth_client.post(_page_comments_url(page.id), {}, format="json")
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_create_comment_empty_content(self, auth_client, page):
@@ -417,7 +445,6 @@ class TestBibleSearchView:
 
     def test_search_empty_query(self, auth_client):
         response = auth_client.get(self.url, {"q": ""})
-        # The service raises BadRequestError for empty queries
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_search_missing_q(self, auth_client):
@@ -430,8 +457,10 @@ class TestBibleSearchView:
         results = _paginated_results(response)
         assert len(results) == 0
 
-    def test_search_scoped_to_section(self, auth_client, section, section2, chapter, page):
-        # Create a page in section2
+    def test_search_scoped_to_section(
+        self, auth_client, section, section2, chapter, page
+    ):
+
         ch2 = SegregatedChapter.objects.create(
             section=section2,
             title="Chapter in section 2",
@@ -445,8 +474,9 @@ class TestBibleSearchView:
             order=1,
             is_active=True,
         )
-        # Search scoped to section2 only
-        response = auth_client.get(self.url, {"q": "beginning", "section": str(section2.pk)})
+        response = auth_client.get(
+            self.url, {"q": "beginning", "section": str(section2.pk)}
+        )
         assert response.status_code == status.HTTP_200_OK
         results = _paginated_results(response)
         assert len(results) == 1
@@ -456,14 +486,8 @@ class TestBibleSearchView:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
 
-# ──────────────────────────────────────────────────────────────
-# Bookmark CRUD (BookmarkViewSet)
-# ──────────────────────────────────────────────────────────────
-
-
 @pytest.mark.django_db
 class TestBookmarkViewSet:
-
     def test_list_bookmarks_empty(self, auth_client):
         response = auth_client.get(BOOKMARKS_URL)
         assert response.status_code == status.HTTP_200_OK
@@ -471,10 +495,13 @@ class TestBookmarkViewSet:
         assert len(results) == 0
 
     def test_create_api_bible_bookmark(self, auth_client, user):
-        response = auth_client.post(BOOKMARKS_URL, {
-            "bookmark_type": "api_bible",
-            "verse_reference": "JHN.3.16",
-        })
+        response = auth_client.post(
+            BOOKMARKS_URL,
+            {
+                "bookmark_type": "api_bible",
+                "verse_reference": "JHN.3.16",
+            },
+        )
         assert response.status_code == status.HTTP_201_CREATED
         data = response.data["data"]
         assert data["bookmark_type"] == "api_bible"
@@ -483,23 +510,32 @@ class TestBookmarkViewSet:
 
     def test_create_segregated_bookmark(self, auth_client, user, page):
         ct = ContentType.objects.get_for_model(SegregatedPage)
-        response = auth_client.post(BOOKMARKS_URL, {
-            "bookmark_type": "segregated",
-            "content_type": ct.pk,
-            "object_id": str(page.pk),
-        })
+        response = auth_client.post(
+            BOOKMARKS_URL,
+            {
+                "bookmark_type": "segregated",
+                "content_type": ct.pk,
+                "object_id": str(page.pk),
+            },
+        )
         assert response.status_code == status.HTTP_201_CREATED
 
     def test_create_api_bible_bookmark_missing_reference(self, auth_client):
-        response = auth_client.post(BOOKMARKS_URL, {
-            "bookmark_type": "api_bible",
-        })
+        response = auth_client.post(
+            BOOKMARKS_URL,
+            {
+                "bookmark_type": "api_bible",
+            },
+        )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_create_segregated_bookmark_missing_content_type(self, auth_client):
-        response = auth_client.post(BOOKMARKS_URL, {
-            "bookmark_type": "segregated",
-        })
+        response = auth_client.post(
+            BOOKMARKS_URL,
+            {
+                "bookmark_type": "segregated",
+            },
+        )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_delete_bookmark(self, auth_client, user):
@@ -532,7 +568,11 @@ class TestBookmarkViewSet:
         page_obj = SegregatedPage.objects.create(
             chapter=SegregatedChapter.objects.create(
                 section=SegregatedSection.objects.create(
-                    title="S", age_min=5, age_max=8, order=1, is_active=True,
+                    title="S",
+                    age_min=5,
+                    age_max=8,
+                    order=1,
+                    is_active=True,
                 ),
                 title="C",
                 order=1,
@@ -544,8 +584,10 @@ class TestBookmarkViewSet:
             is_active=True,
         )
         Bookmark.objects.create(
-            user=user, bookmark_type="segregated",
-            content_type=ct, object_id=page_obj.pk,
+            user=user,
+            bookmark_type="segregated",
+            content_type=ct,
+            object_id=page_obj.pk,
         )
         response = auth_client.get(BOOKMARKS_URL, {"type": "api_bible"})
         results = _paginated_results(response)
@@ -557,14 +599,8 @@ class TestBookmarkViewSet:
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
-# ──────────────────────────────────────────────────────────────
-# Highlight CRUD (HighlightViewSet)
-# ──────────────────────────────────────────────────────────────
-
-
 @pytest.mark.django_db
 class TestHighlightViewSet:
-
     def test_list_highlights_empty(self, auth_client):
         response = auth_client.get(HIGHLIGHTS_URL)
         assert response.status_code == status.HTTP_200_OK
@@ -572,11 +608,14 @@ class TestHighlightViewSet:
         assert len(results) == 0
 
     def test_create_api_bible_highlight(self, auth_client, user):
-        response = auth_client.post(HIGHLIGHTS_URL, {
-            "highlight_type": "api_bible",
-            "verse_reference": "PSA.23.1",
-            "color": "green",
-        })
+        response = auth_client.post(
+            HIGHLIGHTS_URL,
+            {
+                "highlight_type": "api_bible",
+                "verse_reference": "PSA.23.1",
+                "color": "green",
+            },
+        )
         assert response.status_code == status.HTTP_201_CREATED
         data = response.data["data"]
         assert data["highlight_type"] == "api_bible"
@@ -584,43 +623,58 @@ class TestHighlightViewSet:
 
     def test_create_segregated_highlight(self, auth_client, user, page):
         ct = ContentType.objects.get_for_model(SegregatedPage)
-        response = auth_client.post(HIGHLIGHTS_URL, {
-            "highlight_type": "segregated",
-            "content_type": ct.pk,
-            "object_id": str(page.pk),
-            "selection_start": 0,
-            "selection_end": 10,
-            "color": "yellow",
-        })
+        response = auth_client.post(
+            HIGHLIGHTS_URL,
+            {
+                "highlight_type": "segregated",
+                "content_type": ct.pk,
+                "object_id": str(page.pk),
+                "selection_start": 0,
+                "selection_end": 10,
+                "color": "yellow",
+            },
+        )
         assert response.status_code == status.HTTP_201_CREATED
 
     def test_create_api_bible_highlight_missing_reference(self, auth_client):
-        response = auth_client.post(HIGHLIGHTS_URL, {
-            "highlight_type": "api_bible",
-            "color": "yellow",
-        })
+        response = auth_client.post(
+            HIGHLIGHTS_URL,
+            {
+                "highlight_type": "api_bible",
+                "color": "yellow",
+            },
+        )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_create_segregated_highlight_missing_selection(self, auth_client, page):
         ct = ContentType.objects.get_for_model(SegregatedPage)
-        response = auth_client.post(HIGHLIGHTS_URL, {
-            "highlight_type": "segregated",
-            "content_type": ct.pk,
-            "object_id": str(page.pk),
-            "color": "yellow",
-        })
+        response = auth_client.post(
+            HIGHLIGHTS_URL,
+            {
+                "highlight_type": "segregated",
+                "content_type": ct.pk,
+                "object_id": str(page.pk),
+                "color": "yellow",
+            },
+        )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-    def test_create_segregated_highlight_invalid_selection_range(self, auth_client, page):
+    def test_create_segregated_highlight_invalid_selection_range(
+        self, auth_client, page
+    ):
+
         ct = ContentType.objects.get_for_model(SegregatedPage)
-        response = auth_client.post(HIGHLIGHTS_URL, {
-            "highlight_type": "segregated",
-            "content_type": ct.pk,
-            "object_id": str(page.pk),
-            "selection_start": 10,
-            "selection_end": 5,
-            "color": "yellow",
-        })
+        response = auth_client.post(
+            HIGHLIGHTS_URL,
+            {
+                "highlight_type": "segregated",
+                "content_type": ct.pk,
+                "object_id": str(page.pk),
+                "selection_start": 10,
+                "selection_end": 5,
+                "color": "yellow",
+            },
+        )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_delete_highlight(self, auth_client, user):
@@ -653,26 +707,24 @@ class TestHighlightViewSet:
 
     def test_list_highlights_by_type(self, auth_client, user):
         Highlight.objects.create(
-            user=user, highlight_type="api_bible",
-            verse_reference="JHN.1.1", color="yellow",
+            user=user,
+            highlight_type="api_bible",
+            verse_reference="JHN.1.1",
+            color="yellow",
         )
         Highlight.objects.create(
-            user=user, highlight_type="api_bible",
-            verse_reference="JHN.1.2", color="green",
+            user=user,
+            highlight_type="api_bible",
+            verse_reference="JHN.1.2",
+            color="green",
         )
         response = auth_client.get(HIGHLIGHTS_URL, {"type": "api_bible"})
         results = _paginated_results(response)
         assert len(results) == 2
 
 
-# ──────────────────────────────────────────────────────────────
-# Note CRUD (NoteViewSet)
-# ──────────────────────────────────────────────────────────────
-
-
 @pytest.mark.django_db
 class TestNoteViewSet:
-
     def test_list_notes_empty(self, auth_client):
         response = auth_client.get(NOTES_URL)
         assert response.status_code == status.HTTP_200_OK
@@ -680,11 +732,14 @@ class TestNoteViewSet:
         assert len(results) == 0
 
     def test_create_api_bible_note(self, auth_client, user):
-        response = auth_client.post(NOTES_URL, {
-            "note_type": "api_bible",
-            "verse_reference": "JHN.3.16",
-            "text": "This verse speaks of God's love.",
-        })
+        response = auth_client.post(
+            NOTES_URL,
+            {
+                "note_type": "api_bible",
+                "verse_reference": "JHN.3.16",
+                "text": "This verse speaks of God's love.",
+            },
+        )
         assert response.status_code == status.HTTP_201_CREATED
         data = response.data["data"]
         assert data["note_type"] == "api_bible"
@@ -693,26 +748,35 @@ class TestNoteViewSet:
 
     def test_create_segregated_note(self, auth_client, user, page):
         ct = ContentType.objects.get_for_model(SegregatedPage)
-        response = auth_client.post(NOTES_URL, {
-            "note_type": "segregated",
-            "content_type": ct.pk,
-            "object_id": str(page.pk),
-            "text": "My note on this page.",
-        })
+        response = auth_client.post(
+            NOTES_URL,
+            {
+                "note_type": "segregated",
+                "content_type": ct.pk,
+                "object_id": str(page.pk),
+                "text": "My note on this page.",
+            },
+        )
         assert response.status_code == status.HTTP_201_CREATED
 
     def test_create_api_bible_note_missing_reference(self, auth_client):
-        response = auth_client.post(NOTES_URL, {
-            "note_type": "api_bible",
-            "text": "Note without reference.",
-        })
+        response = auth_client.post(
+            NOTES_URL,
+            {
+                "note_type": "api_bible",
+                "text": "Note without reference.",
+            },
+        )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_create_note_missing_text(self, auth_client):
-        response = auth_client.post(NOTES_URL, {
-            "note_type": "api_bible",
-            "verse_reference": "JHN.3.16",
-        })
+        response = auth_client.post(
+            NOTES_URL,
+            {
+                "note_type": "api_bible",
+                "verse_reference": "JHN.3.16",
+            },
+        )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_update_note(self, auth_client, user):
@@ -724,13 +788,12 @@ class TestNoteViewSet:
         )
         url = f"{NOTES_URL}{note.pk}/"
         response = auth_client.patch(url, {"text": "Updated text."})
-        # Verify the update succeeded at the DB level even if response
-        # serialization may encounter issues.
+
         if response.status_code == status.HTTP_200_OK:
             data = response.data["data"]
             assert data["text"] == "Updated text."
+
         else:
-            # Check DB was updated despite response issue
             note.refresh_from_db()
             assert note.text == "Updated text."
 
@@ -772,12 +835,16 @@ class TestNoteViewSet:
 
     def test_list_notes_by_type(self, auth_client, user):
         Note.objects.create(
-            user=user, note_type="api_bible",
-            verse_reference="JHN.1.1", text="Note 1",
+            user=user,
+            note_type="api_bible",
+            verse_reference="JHN.1.1",
+            text="Note 1",
         )
         Note.objects.create(
-            user=user, note_type="api_bible",
-            verse_reference="JHN.1.2", text="Note 2",
+            user=user,
+            note_type="api_bible",
+            verse_reference="JHN.1.2",
+            text="Note 2",
         )
         response = auth_client.get(NOTES_URL, {"type": "api_bible"})
         results = _paginated_results(response)
@@ -789,11 +856,14 @@ class TestNoteViewSet:
 
     def test_note_response_fields(self, auth_client, user):
         Note.objects.create(
-            user=user, note_type="api_bible",
-            verse_reference="JHN.3.16", text="My note.",
+            user=user,
+            note_type="api_bible",
+            verse_reference="JHN.3.16",
+            text="My note.",
         )
         response = auth_client.get(NOTES_URL)
         results = _paginated_results(response)
         note = results[0]
+
         for field in ("id", "note_type", "text", "verse_reference", "created_at"):
             assert field in note

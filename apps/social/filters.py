@@ -1,7 +1,5 @@
 from __future__ import annotations
-
 import django_filters
-
 from .models import Post, Prayer
 
 

@@ -1,24 +1,22 @@
 from __future__ import annotations
-
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
-
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
-
 from django.utils import timezone
-
 from apps.common.exceptions import BadRequestError
 from apps.common.views import BaseAPIView
-
 from .models import VerseFallbackPool, VerseOfDay
 from .serializers import UnifiedVerseResponseSerializer
 from .services import VerseOfDayService
 
 
-def _build_unified_data(verse: VerseOfDay | VerseFallbackPool, display_date=None) -> dict:
+def _build_unified_data(
+    verse: VerseOfDay | VerseFallbackPool, display_date: date | None = None
+) -> dict[str, Any]:
     """Build a unified response dict from either a VerseOfDay or VerseFallbackPool."""
+
     if isinstance(verse, VerseOfDay):
         return {
             "id": verse.pk,
@@ -28,6 +26,7 @@ def _build_unified_data(verse: VerseOfDay | VerseFallbackPool, display_date=None
             "display_date": verse.display_date,
             "source": "scheduled",
         }
+
     else:
         return {
             "id": verse.pk,
@@ -39,17 +38,13 @@ def _build_unified_data(verse: VerseOfDay | VerseFallbackPool, display_date=None
         }
 
 
-# ---------------------------------------------------------------------------
-# Verse of the Day views
-# ---------------------------------------------------------------------------
-
-
 class TodayVerseView(BaseAPIView):
     """GET /verse-of-day/today/ -- return today's verse.
 
     Returns the scheduled VerseOfDay for today, or a random fallback
     from the pool if none is scheduled. Always returns a consistent
     response shape with ``display_date`` and ``source`` fields.
+    Supports ETag for 304 Not Modified.
     """
 
     permission_classes = [IsAuthenticated]
@@ -59,13 +54,23 @@ class TodayVerseView(BaseAPIView):
         self._verse_service = VerseOfDayService()
 
     def get(self, request: Request) -> Response:
+        import hashlib
+
         verse = self._verse_service.get_today_verse()
         data = _build_unified_data(verse, display_date=timezone.now().date())
         serializer = UnifiedVerseResponseSerializer(data)
-        return self.success_response(
+        etag = hashlib.md5(f"{data['id']}:{data['display_date']}".encode()).hexdigest()
+
+        if request.META.get("HTTP_IF_NONE_MATCH") == etag:
+            return Response(status=304)
+
+        resp = self.success_response(
             data=serializer.data,
             message="Verse of the day retrieved.",
         )
+        resp["ETag"] = etag
+
+        return resp
 
 
 class VerseByDateView(BaseAPIView):
@@ -84,14 +89,14 @@ class VerseByDateView(BaseAPIView):
     def get(self, request: Request, date_str: str) -> Response:
         try:
             target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+
         except ValueError:
-            raise BadRequestError(
-                detail="Invalid date format. Use YYYY-MM-DD."
-            )
+            raise BadRequestError(detail="Invalid date format. Use YYYY-MM-DD.")
 
         verse = self._verse_service.get_verse_by_date(target_date=target_date)
         data = _build_unified_data(verse, display_date=target_date)
         serializer = UnifiedVerseResponseSerializer(data)
+
         return self.success_response(
             data=serializer.data,
             message="Verse retrieved.",

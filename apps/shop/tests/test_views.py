@@ -1,15 +1,11 @@
 """Tests for apps.shop.views — API endpoints for the shop."""
 
 from __future__ import annotations
-
 import uuid
 from unittest.mock import patch
-
 import pytest
 from rest_framework import status
-
 from apps.shop.models import Download, Purchase
-
 from conftest import (
     ProductFactory,
     PurchaseFactory,
@@ -20,6 +16,7 @@ from conftest import (
 @pytest.fixture(autouse=True)
 def _mock_storage():
     """Prevent UploadThing API calls during tests by mocking the storage save."""
+
     with (
         patch(
             "apps.common.storage_backends.UploadThingStorage._save",
@@ -39,12 +36,16 @@ def _mock_storage():
 
 def _paginated_results(response):
     """Extract results from a paginated envelope response."""
+
     return response.data["data"]["results"]
 
 
 PRODUCTS_URL = "/api/v1/shop/products/"
+
 PRODUCT_SEARCH_URL = "/api/v1/shop/products/search/"
+
 PURCHASES_URL = "/api/v1/shop/purchases/"
+
 PURCHASES_LIST_URL = "/api/v1/shop/purchases/list/"
 
 
@@ -54,11 +55,6 @@ def _download_url(product_id: uuid.UUID) -> str:
 
 def _product_detail_url(product_id: uuid.UUID) -> str:
     return f"/api/v1/shop/products/{product_id}/"
-
-
-# ──────────────────────────────────────────────────────────────
-# GET /api/v1/shop/products/  (ProductListView)
-# ──────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -106,13 +102,16 @@ class TestProductListView:
         response = auth_client.get(self.url)
         results = _paginated_results(response)
         product = results[0]
-        for field in ("id", "title", "cover_image", "category", "is_free", "price_tier"):
+
+        for field in (
+            "id",
+            "title",
+            "cover_image",
+            "category",
+            "is_free",
+            "price_tier",
+        ):
             assert field in product
-
-
-# ──────────────────────────────────────────────────────────────
-# GET /api/v1/shop/products/search/?q=  (ProductSearchView)
-# ──────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -164,14 +163,8 @@ class TestProductSearchView:
         assert len(results) == 0
 
 
-# ──────────────────────────────────────────────────────────────
-# GET /api/v1/shop/products/<uuid:pk>/  (ProductDetailView)
-# ──────────────────────────────────────────────────────────────
-
-
 @pytest.mark.django_db
 class TestProductDetailView:
-
     def test_get_product_detail(self, auth_client):
         product = ProductFactory(is_active=True, title="Bible Study Guide")
         response = auth_client.get(_product_detail_url(product.pk))
@@ -184,9 +177,17 @@ class TestProductDetailView:
         product = ProductFactory(is_active=True)
         response = auth_client.get(_product_detail_url(product.pk))
         data = response.data["data"]
+
         for field in (
-            "id", "title", "description", "cover_image", "category",
-            "is_free", "price_tier", "download_count", "download_url",
+            "id",
+            "title",
+            "description",
+            "cover_image",
+            "category",
+            "is_free",
+            "price_tier",
+            "download_count",
+            "download_url",
         ):
             assert field in data
 
@@ -225,11 +226,6 @@ class TestProductDetailView:
         assert data["download_url"] is not None
 
 
-# ──────────────────────────────────────────────────────────────
-# POST /api/v1/shop/purchases/  (PurchaseCreateView)
-# ──────────────────────────────────────────────────────────────
-
-
 @pytest.mark.django_db
 class TestPurchaseCreateView:
     url = PURCHASES_URL
@@ -239,13 +235,15 @@ class TestPurchaseCreateView:
         mock_validate.return_value = {"status": 0}
         product = ProductFactory(is_active=True, is_free=False)
         txn_id = f"txn_{uuid.uuid4().hex[:16]}"
-
-        response = auth_client.post(self.url, {
-            "product_id": str(product.pk),
-            "platform": "ios",
-            "receipt_data": "fake-receipt-data",
-            "transaction_id": txn_id,
-        })
+        response = auth_client.post(
+            self.url,
+            {
+                "product_id": str(product.pk),
+                "platform": "ios",
+                "receipt_data": "fake-receipt-data",
+                "transaction_id": txn_id,
+            },
+        )
         assert response.status_code == status.HTTP_201_CREATED
         data = response.data["data"]
         assert data["is_validated"] is True
@@ -257,54 +255,68 @@ class TestPurchaseCreateView:
         mock_validate.return_value = {"purchaseState": 0}
         product = ProductFactory(is_active=True, is_free=False)
         txn_id = f"txn_{uuid.uuid4().hex[:16]}"
-
-        response = auth_client.post(self.url, {
-            "product_id": str(product.pk),
-            "platform": "android",
-            "receipt_data": "fake-token",
-            "transaction_id": txn_id,
-        })
+        response = auth_client.post(
+            self.url,
+            {
+                "product_id": str(product.pk),
+                "platform": "android",
+                "receipt_data": "fake-token",
+                "transaction_id": txn_id,
+            },
+        )
         assert response.status_code == status.HTTP_201_CREATED
 
     @patch("apps.shop.services.validate_apple_receipt")
-    def test_create_purchase_duplicate_transaction_id(self, mock_validate, auth_client, user):
+    def test_create_purchase_duplicate_transaction_id(
+        self, mock_validate, auth_client, user
+    ):
+
         mock_validate.return_value = {"status": 0}
         product = ProductFactory(is_active=True, is_free=False)
         txn_id = f"txn_{uuid.uuid4().hex[:16]}"
-
-        # First purchase
-        auth_client.post(self.url, {
-            "product_id": str(product.pk),
-            "platform": "ios",
-            "receipt_data": "fake-receipt-data",
-            "transaction_id": txn_id,
-        })
-        # Duplicate transaction_id
-        response = auth_client.post(self.url, {
-            "product_id": str(product.pk),
-            "platform": "ios",
-            "receipt_data": "fake-receipt-data",
-            "transaction_id": txn_id,
-        })
+        auth_client.post(
+            self.url,
+            {
+                "product_id": str(product.pk),
+                "platform": "ios",
+                "receipt_data": "fake-receipt-data",
+                "transaction_id": txn_id,
+            },
+        )
+        response = auth_client.post(
+            self.url,
+            {
+                "product_id": str(product.pk),
+                "platform": "ios",
+                "receipt_data": "fake-receipt-data",
+                "transaction_id": txn_id,
+            },
+        )
         assert response.status_code == status.HTTP_409_CONFLICT
 
     def test_create_purchase_nonexistent_product(self, auth_client):
-        response = auth_client.post(self.url, {
-            "product_id": str(uuid.uuid4()),
-            "platform": "ios",
-            "receipt_data": "fake-receipt-data",
-            "transaction_id": f"txn_{uuid.uuid4().hex[:16]}",
-        })
+        response = auth_client.post(
+            self.url,
+            {
+                "product_id": str(uuid.uuid4()),
+                "platform": "ios",
+                "receipt_data": "fake-receipt-data",
+                "transaction_id": f"txn_{uuid.uuid4().hex[:16]}",
+            },
+        )
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
     def test_create_purchase_invalid_platform(self, auth_client):
         product = ProductFactory(is_active=True, is_free=False)
-        response = auth_client.post(self.url, {
-            "product_id": str(product.pk),
-            "platform": "windows",
-            "receipt_data": "fake-receipt-data",
-            "transaction_id": f"txn_{uuid.uuid4().hex[:16]}",
-        })
+        response = auth_client.post(
+            self.url,
+            {
+                "product_id": str(product.pk),
+                "platform": "windows",
+                "receipt_data": "fake-receipt-data",
+                "transaction_id": f"txn_{uuid.uuid4().hex[:16]}",
+            },
+        )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_create_purchase_missing_fields(self, auth_client):
@@ -313,24 +325,33 @@ class TestPurchaseCreateView:
 
     def test_create_purchase_unauthenticated(self, api_client):
         product = ProductFactory(is_active=True)
-        response = api_client.post(self.url, {
-            "product_id": str(product.pk),
-            "platform": "ios",
-            "receipt_data": "fake-receipt-data",
-            "transaction_id": "txn_123",
-        })
+        response = api_client.post(
+            self.url,
+            {
+                "product_id": str(product.pk),
+                "platform": "ios",
+                "receipt_data": "fake-receipt-data",
+                "transaction_id": "txn_123",
+            },
+        )
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     @patch("apps.shop.services.validate_apple_receipt")
-    def test_create_purchase_receipt_validation_failure(self, mock_validate, auth_client):
+    def test_create_purchase_receipt_validation_failure(
+        self, mock_validate, auth_client
+    ):
+
         mock_validate.side_effect = ValueError("Invalid receipt")
         product = ProductFactory(is_active=True, is_free=False)
-        response = auth_client.post(self.url, {
-            "product_id": str(product.pk),
-            "platform": "ios",
-            "receipt_data": "invalid-receipt",
-            "transaction_id": f"txn_{uuid.uuid4().hex[:16]}",
-        })
+        response = auth_client.post(
+            self.url,
+            {
+                "product_id": str(product.pk),
+                "platform": "ios",
+                "receipt_data": "invalid-receipt",
+                "transaction_id": f"txn_{uuid.uuid4().hex[:16]}",
+            },
+        )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert response.data["message"] == "Receipt validation failed: Invalid receipt"
         assert not Purchase.objects.filter(product=product).exists()
@@ -340,21 +361,18 @@ class TestPurchaseCreateView:
         mock_validate.return_value = {"status": 0}
         product = ProductFactory(is_active=True, is_free=False)
         txn_id = f"txn_{uuid.uuid4().hex[:16]}"
-
-        response = auth_client.post(self.url, {
-            "product_id": str(product.pk),
-            "platform": "ios",
-            "receipt_data": "fake-receipt",
-            "transaction_id": txn_id,
-        })
+        response = auth_client.post(
+            self.url,
+            {
+                "product_id": str(product.pk),
+                "platform": "ios",
+                "receipt_data": "fake-receipt",
+                "transaction_id": txn_id,
+            },
+        )
         assert "message" in response.data
         assert "data" in response.data
         assert response.data["message"] == "Purchase verified successfully."
-
-
-# ──────────────────────────────────────────────────────────────
-# GET /api/v1/shop/purchases/list/  (PurchaseListView)
-# ──────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -396,14 +414,8 @@ class TestPurchaseListView:
         assert results[0]["product"]["title"] == "My Product"
 
 
-# ──────────────────────────────────────────────────────────────
-# GET /api/v1/shop/downloads/<uuid:product_id>/  (DownloadView)
-# ──────────────────────────────────────────────────────────────
-
-
 @pytest.mark.django_db
 class TestDownloadView:
-
     @patch("apps.shop.services.DownloadService.generate_download_url")
     def test_download_free_product(self, mock_url, auth_client, user):
         mock_url.return_value = "https://cdn.example.com/file.pdf"
@@ -448,8 +460,12 @@ class TestDownloadView:
 
     @patch("apps.shop.services.DownloadService.generate_download_url")
     def test_download_paid_product_unvalidated_purchase_returns_403(
-        self, mock_url, auth_client, user,
+        self,
+        mock_url,
+        auth_client,
+        user,
     ):
+
         mock_url.return_value = "https://cdn.example.com/paid.pdf"
         product = ProductFactory(is_active=True, is_free=False)
         PurchaseFactory(user=user, product=product, is_validated=False)

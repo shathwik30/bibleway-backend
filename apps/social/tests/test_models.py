@@ -1,13 +1,11 @@
 """Tests for social app models."""
 
 from __future__ import annotations
-
 import uuid
-
 import pytest
 from django.contrib.contenttypes.models import ContentType
 from django.db import IntegrityError
-
+from apps.common.constants import MediaType
 from apps.social.models import (
     Comment,
     Post,
@@ -19,18 +17,12 @@ from apps.social.models import (
     Report,
 )
 
-# Import factories from root conftest (available via pytest auto-discovery).
 from conftest import (
     PostFactory,
     PrayerFactory,
     ReportFactory,
     UserFactory,
 )
-
-
-# ──────────────────────────────────────────────────────────────
-# Post model
-# ──────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -58,7 +50,6 @@ class TestPostModel:
     def test_post_str_truncates_long_text(self):
         long_text = "A" * 100
         post = PostFactory(text_content=long_text)
-        # __str__ truncates to first 50 chars
         assert str(post).endswith(long_text[:50])
 
     def test_post_uuid_pk(self):
@@ -70,7 +61,6 @@ class TestPostModel:
         post1 = PostFactory(author=user, text_content="First")
         post2 = PostFactory(author=user, text_content="Second")
         posts = list(Post.objects.filter(author=user))
-        # Newest first
         assert posts[0].pk == post2.pk
         assert posts[1].pk == post1.pk
 
@@ -96,11 +86,6 @@ class TestPostModel:
         assert hasattr(post, "reports")
 
 
-# ──────────────────────────────────────────────────────────────
-# PostMedia model
-# ──────────────────────────────────────────────────────────────
-
-
 @pytest.mark.django_db
 class TestPostMediaModel:
     """Tests for the PostMedia model."""
@@ -110,7 +95,7 @@ class TestPostMediaModel:
         media = PostMedia.objects.create(
             post=post,
             file="test.jpg",
-            media_type=PostMedia.MediaType.IMAGE,
+            media_type=MediaType.IMAGE,
             order=0,
         )
         assert "image" in str(media)
@@ -139,13 +124,8 @@ class TestPostMediaModel:
         assert PostMedia.objects.filter(post_id=post_pk).count() == 0
 
     def test_post_media_type_choices(self):
-        assert PostMedia.MediaType.IMAGE == "image"
-        assert PostMedia.MediaType.VIDEO == "video"
-
-
-# ──────────────────────────────────────────────────────────────
-# Prayer model
-# ──────────────────────────────────────────────────────────────
+        assert MediaType.IMAGE == "image"
+        assert MediaType.VIDEO == "video"
 
 
 @pytest.mark.django_db
@@ -194,11 +174,6 @@ class TestPrayerModel:
         assert hasattr(prayer, "reports")
 
 
-# ──────────────────────────────────────────────────────────────
-# PrayerMedia model
-# ──────────────────────────────────────────────────────────────
-
-
 @pytest.mark.django_db
 class TestPrayerMediaModel:
     """Tests for the PrayerMedia model."""
@@ -208,7 +183,7 @@ class TestPrayerMediaModel:
         media = PrayerMedia.objects.create(
             prayer=prayer,
             file="test.jpg",
-            media_type=PrayerMedia.MediaType.IMAGE,
+            media_type=MediaType.IMAGE,
             order=0,
         )
         assert "image" in str(media)
@@ -237,13 +212,8 @@ class TestPrayerMediaModel:
         assert PrayerMedia.objects.filter(prayer_id=prayer_pk).count() == 0
 
     def test_prayer_media_type_choices(self):
-        assert PrayerMedia.MediaType.IMAGE == "image"
-        assert PrayerMedia.MediaType.VIDEO == "video"
-
-
-# ──────────────────────────────────────────────────────────────
-# Reaction model
-# ──────────────────────────────────────────────────────────────
+        assert MediaType.IMAGE == "image"
+        assert MediaType.VIDEO == "video"
 
 
 @pytest.mark.django_db
@@ -293,6 +263,7 @@ class TestReactionModel:
             object_id=post.pk,
             emoji_type=Reaction.EmojiType.HEART,
         )
+
         with pytest.raises(IntegrityError):
             Reaction.objects.create(
                 user=user,
@@ -343,11 +314,6 @@ class TestReactionModel:
             user=user, content_type=ct, object_id=post.pk, emoji_type="heart"
         )
         assert post.reactions.count() == 1
-
-
-# ──────────────────────────────────────────────────────────────
-# Comment model
-# ──────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -417,11 +383,6 @@ class TestCommentModel:
         assert Comment.objects.count() == 0
 
 
-# ──────────────────────────────────────────────────────────────
-# Reply model
-# ──────────────────────────────────────────────────────────────
-
-
 @pytest.mark.django_db
 class TestReplyModel:
     """Tests for the Reply model."""
@@ -459,7 +420,6 @@ class TestReplyModel:
         r1 = Reply.objects.create(user=user, comment=comment, text="First")
         r2 = Reply.objects.create(user=user, comment=comment, text="Second")
         replies = list(Reply.objects.filter(comment=comment))
-        # Oldest first
         assert replies[0].pk == r1.pk
         assert replies[1].pk == r2.pk
 
@@ -485,11 +445,6 @@ class TestReplyModel:
         Reply.objects.create(user=user, comment=comment, text="Reply 1")
         Reply.objects.create(user=user, comment=comment, text="Reply 2")
         assert comment.replies.count() == 2
-
-
-# ──────────────────────────────────────────────────────────────
-# Report model
-# ──────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db

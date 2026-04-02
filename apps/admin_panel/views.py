@@ -1,15 +1,11 @@
 from __future__ import annotations
-
 from typing import Any
 from uuid import UUID
-
 from rest_framework.permissions import BasePermission
 from rest_framework.request import Request
 from rest_framework.response import Response
-
 from apps.common.pagination import StandardPageNumberPagination
 from apps.common.views import BaseAPIView
-
 from .permissions import IsAdminStaff, IsContentAdmin, IsModerationAdmin, IsSuperAdmin
 from .serializers import (
     AdminBibleReadingStatsSerializer,
@@ -61,6 +57,7 @@ from .serializers import (
     DashboardOverviewSerializer,
     UserGrowthPointSerializer,
 )
+
 from .services import (
     AdminAnalyticsService,
     AdminBibleService,
@@ -75,11 +72,6 @@ from .services import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Dashboard
-# ---------------------------------------------------------------------------
-
-
 class DashboardOverviewView(BaseAPIView):
     """Return high-level KPI overview for the admin dashboard."""
 
@@ -92,7 +84,10 @@ class DashboardOverviewView(BaseAPIView):
     def get(self, request: Request) -> Response:
         data: dict[str, Any] = self.service.get_overview()
         serializer = DashboardOverviewSerializer(data)
-        return self.success_response(data=serializer.data, message="Dashboard overview retrieved")
+
+        return self.success_response(
+            data=serializer.data, message="Dashboard overview retrieved"
+        )
 
 
 class UserGrowthView(BaseAPIView):
@@ -107,16 +102,16 @@ class UserGrowthView(BaseAPIView):
     def get(self, request: Request) -> Response:
         try:
             days: int = int(request.query_params.get("days", 30))
+
         except (TypeError, ValueError):
             days = 30
+
         data: list[dict[str, Any]] = self.service.get_user_growth_data(days=days)
         serializer = UserGrowthPointSerializer(data, many=True)
-        return self.success_response(data=serializer.data, message="User growth data retrieved")
 
-
-# ---------------------------------------------------------------------------
-# User Management
-# ---------------------------------------------------------------------------
+        return self.success_response(
+            data=serializer.data, message="User growth data retrieved"
+        )
 
 
 class AdminUserListView(BaseAPIView):
@@ -144,6 +139,7 @@ class AdminUserListView(BaseAPIView):
         )
         page = self.paginator.paginate_queryset(queryset, request, view=self)
         serializer = AdminUserListSerializer(page, many=True)
+
         return self.paginator.get_paginated_response(serializer.data)
 
 
@@ -159,7 +155,10 @@ class AdminUserDetailView(BaseAPIView):
     def get(self, request: Request, user_id: UUID) -> Response:
         user = self.service.get_user_detail(user_id=user_id)
         serializer = AdminUserDetailSerializer(user)
-        return self.success_response(data=serializer.data, message="User detail retrieved")
+
+        return self.success_response(
+            data=serializer.data, message="User detail retrieved"
+        )
 
 
 class AdminUserSuspendView(BaseAPIView):
@@ -179,6 +178,7 @@ class AdminUserSuspendView(BaseAPIView):
             user_id=user_id,
             reason=serializer.validated_data.get("reason", ""),
         )
+
         return self.success_response(
             data=AdminUserDetailSerializer(user).data,
             message="User suspended",
@@ -196,15 +196,11 @@ class AdminUserUnsuspendView(BaseAPIView):
 
     def post(self, request: Request, user_id: UUID) -> Response:
         user = self.service.unsuspend_user(admin_user=request.user, user_id=user_id)
+
         return self.success_response(
             data=AdminUserDetailSerializer(user).data,
             message="User unsuspended",
         )
-
-
-# ---------------------------------------------------------------------------
-# Admin User Management (Super Admin only)
-# ---------------------------------------------------------------------------
 
 
 class AdminUsersListView(BaseAPIView):
@@ -219,7 +215,10 @@ class AdminUsersListView(BaseAPIView):
     def get(self, request: Request) -> Response:
         admins = self.service.list_admin_users()
         serializer = AdminRoleSerializer(admins, many=True)
-        return self.success_response(data=serializer.data, message="Admin users retrieved")
+
+        return self.success_response(
+            data=serializer.data, message="Admin users retrieved"
+        )
 
 
 class AdminUserCreateView(BaseAPIView):
@@ -242,6 +241,7 @@ class AdminUserCreateView(BaseAPIView):
             full_name=data["full_name"],
             role=data["role"],
         )
+
         return self.created_response(
             data=AdminRoleSerializer(admin).data,
             message="Admin user created",
@@ -265,6 +265,7 @@ class AdminUserRoleUpdateView(BaseAPIView):
             target_user_id=user_id,
             new_role=serializer.validated_data["role"],
         )
+
         return self.success_response(
             data=AdminRoleSerializer(admin).data,
             message="Admin role updated",
@@ -282,12 +283,8 @@ class AdminUserDeleteView(BaseAPIView):
 
     def delete(self, request: Request, user_id: UUID) -> Response:
         self.service.delete_admin_user(admin_user=request.user, target_user_id=user_id)
+
         return self.no_content_response()
-
-
-# ---------------------------------------------------------------------------
-# Content Moderation
-# ---------------------------------------------------------------------------
 
 
 class AdminReportListView(BaseAPIView):
@@ -307,6 +304,7 @@ class AdminReportListView(BaseAPIView):
         )
         page = self.paginator.paginate_queryset(queryset, request, view=self)
         serializer = AdminReportListSerializer(page, many=True)
+
         return self.paginator.get_paginated_response(serializer.data)
 
 
@@ -322,7 +320,10 @@ class AdminReportDetailView(BaseAPIView):
     def get(self, request: Request, report_id: UUID) -> Response:
         report = self.service.get_report_detail(report_id=report_id)
         serializer = AdminReportDetailSerializer(report)
-        return self.success_response(data=serializer.data, message="Report detail retrieved")
+
+        return self.success_response(
+            data=serializer.data, message="Report detail retrieved"
+        )
 
 
 class AdminReportActionView(BaseAPIView):
@@ -343,35 +344,38 @@ class AdminReportActionView(BaseAPIView):
 
         if action == "dismiss":
             report = self.service.dismiss_report(
-                admin_user=admin_user, report_id=report_id,
+                admin_user=admin_user,
+                report_id=report_id,
             )
+
         elif action == "remove_content":
             report = self.service.remove_content(
-                admin_user=admin_user, report_id=report_id,
+                admin_user=admin_user,
+                report_id=report_id,
             )
+
         elif action == "warn":
             report = self.service.warn_user(
                 admin_user=admin_user,
                 report_id=report_id,
                 warning_message=data.get("warning_message", ""),
             )
+
         elif action == "suspend":
             report = self.service.suspend_from_report(
-                admin_user=admin_user, report_id=report_id,
+                admin_user=admin_user,
+                report_id=report_id,
             )
+
         else:
             from apps.common.exceptions import BadRequestError
+
             raise BadRequestError(detail=f"Unknown action: {action}")
 
         return self.success_response(
             data=AdminReportDetailSerializer(report).data,
             message="Report action completed",
         )
-
-
-# ---------------------------------------------------------------------------
-# Verse of the Day
-# ---------------------------------------------------------------------------
 
 
 class AdminVerseListView(BaseAPIView):
@@ -388,6 +392,7 @@ class AdminVerseListView(BaseAPIView):
         queryset = self.service.list_verses()
         page = self.paginator.paginate_queryset(queryset, request, view=self)
         serializer = AdminVerseOfDaySerializer(page, many=True)
+
         return self.paginator.get_paginated_response(serializer.data)
 
 
@@ -406,6 +411,7 @@ class AdminVerseCreateView(BaseAPIView):
         data = serializer.validated_data
         data.pop("admin_user", None)
         verse = self.service.create_verse(**data, admin_user=request.user)
+
         return self.created_response(
             data=AdminVerseOfDaySerializer(verse).data,
             message="Verse of the day created",
@@ -431,6 +437,7 @@ class AdminVerseUpdateView(BaseAPIView):
             **data,
             admin_user=request.user,
         )
+
         return self.success_response(
             data=AdminVerseOfDaySerializer(verse).data,
             message="Verse of the day updated",
@@ -439,6 +446,7 @@ class AdminVerseUpdateView(BaseAPIView):
     def delete(self, request: Request, verse_id: UUID) -> Response:
         """Delegate to AdminVerseDeleteView logic at the same URL path."""
         self.service.delete_verse(verse_id=verse_id, admin_user=request.user)
+
         return self.no_content_response()
 
 
@@ -453,6 +461,7 @@ class AdminVerseDeleteView(BaseAPIView):
 
     def delete(self, request: Request, verse_id: UUID) -> Response:
         self.service.delete_verse(verse_id=verse_id, admin_user=request.user)
+
         return self.no_content_response()
 
 
@@ -474,6 +483,7 @@ class AdminVerseBulkCreateView(BaseAPIView):
             **data,
             admin_user=request.user,
         )
+
         return self.created_response(
             data=AdminVerseOfDaySerializer(verses, many=True).data,
             message="Verses created in bulk",
@@ -492,7 +502,10 @@ class AdminFallbackPoolListView(BaseAPIView):
     def get(self, request: Request) -> Response:
         verses = self.service.list_fallback_pool()
         serializer = AdminVerseFallbackSerializer(verses, many=True)
-        return self.success_response(data=serializer.data, message="Fallback verses retrieved")
+
+        return self.success_response(
+            data=serializer.data, message="Fallback verses retrieved"
+        )
 
 
 class AdminFallbackPoolCreateView(BaseAPIView):
@@ -513,6 +526,7 @@ class AdminFallbackPoolCreateView(BaseAPIView):
             **data,
             admin_user=request.user,
         )
+
         return self.created_response(
             data=AdminVerseFallbackSerializer(verse).data,
             message="Fallback verse created",
@@ -538,6 +552,7 @@ class AdminFallbackPoolUpdateView(BaseAPIView):
             **data,
             admin_user=request.user,
         )
+
         return self.success_response(
             data=AdminVerseFallbackSerializer(verse).data,
             message="Fallback verse updated",
@@ -546,6 +561,7 @@ class AdminFallbackPoolUpdateView(BaseAPIView):
     def delete(self, request: Request, verse_id: UUID) -> Response:
         """Delegate to AdminFallbackPoolDeleteView logic at the same URL path."""
         self.service.delete_fallback_verse(verse_id=verse_id, admin_user=request.user)
+
         return self.no_content_response()
 
 
@@ -560,12 +576,8 @@ class AdminFallbackPoolDeleteView(BaseAPIView):
 
     def delete(self, request: Request, verse_id: UUID) -> Response:
         self.service.delete_fallback_verse(verse_id=verse_id, admin_user=request.user)
+
         return self.no_content_response()
-
-
-# ---------------------------------------------------------------------------
-# Segregated Bible CMS
-# ---------------------------------------------------------------------------
 
 
 class AdminSectionListView(BaseAPIView):
@@ -580,6 +592,7 @@ class AdminSectionListView(BaseAPIView):
     def get(self, request: Request) -> Response:
         sections = self.service.list_sections()
         serializer = AdminSectionSerializer(sections, many=True)
+
         return self.success_response(data=serializer.data, message="Sections retrieved")
 
     def post(self, request: Request) -> Response:
@@ -591,6 +604,7 @@ class AdminSectionListView(BaseAPIView):
             **data,
             admin_user=request.user,
         )
+
         return self.created_response(
             data=AdminSectionSerializer(section).data,
             message="Section created",
@@ -616,6 +630,7 @@ class AdminSectionDetailView(BaseAPIView):
             **data,
             admin_user=request.user,
         )
+
         return self.success_response(
             data=AdminSectionSerializer(section).data,
             message="Section updated",
@@ -623,6 +638,7 @@ class AdminSectionDetailView(BaseAPIView):
 
     def delete(self, request: Request, section_id: UUID) -> Response:
         self.service.delete_section(section_id=section_id, admin_user=request.user)
+
         return self.no_content_response()
 
 
@@ -638,6 +654,7 @@ class AdminChapterListView(BaseAPIView):
     def get(self, request: Request, section_id: UUID) -> Response:
         chapters = self.service.list_chapters(section_id=section_id)
         serializer = AdminChapterSerializer(chapters, many=True)
+
         return self.success_response(data=serializer.data, message="Chapters retrieved")
 
     def post(self, request: Request, section_id: UUID) -> Response:
@@ -650,6 +667,7 @@ class AdminChapterListView(BaseAPIView):
             **data,
             admin_user=request.user,
         )
+
         return self.created_response(
             data=AdminChapterSerializer(chapter).data,
             message="Chapter created",
@@ -675,6 +693,7 @@ class AdminChapterDetailView(BaseAPIView):
             **data,
             admin_user=request.user,
         )
+
         return self.success_response(
             data=AdminChapterSerializer(chapter).data,
             message="Chapter updated",
@@ -682,6 +701,7 @@ class AdminChapterDetailView(BaseAPIView):
 
     def delete(self, request: Request, chapter_id: UUID) -> Response:
         self.service.delete_chapter(chapter_id=chapter_id, admin_user=request.user)
+
         return self.no_content_response()
 
 
@@ -704,6 +724,7 @@ class AdminChapterReorderView(BaseAPIView):
             **data,
             admin_user=request.user,
         )
+
         return self.success_response(
             data=AdminChapterSerializer(chapters, many=True).data,
             message="Chapters reordered",
@@ -722,6 +743,7 @@ class AdminPageListView(BaseAPIView):
     def get(self, request: Request, chapter_id: UUID) -> Response:
         pages = self.service.list_pages(chapter_id=chapter_id)
         serializer = AdminPageSerializer(pages, many=True)
+
         return self.success_response(data=serializer.data, message="Pages retrieved")
 
     def post(self, request: Request, chapter_id: UUID) -> Response:
@@ -734,6 +756,7 @@ class AdminPageListView(BaseAPIView):
             **data,
             admin_user=request.user,
         )
+
         return self.created_response(
             data=AdminPageSerializer(page).data,
             message="Page created",
@@ -752,7 +775,10 @@ class AdminPageDetailView(BaseAPIView):
     def get(self, request: Request, page_id: UUID) -> Response:
         page = self.service.get_page_detail(page_id=page_id)
         serializer = AdminPageSerializer(page)
-        return self.success_response(data=serializer.data, message="Page detail retrieved")
+
+        return self.success_response(
+            data=serializer.data, message="Page detail retrieved"
+        )
 
     def put(self, request: Request, page_id: UUID) -> Response:
         serializer = AdminPageUpdateSerializer(data=request.data)
@@ -764,6 +790,7 @@ class AdminPageDetailView(BaseAPIView):
             **data,
             admin_user=request.user,
         )
+
         return self.success_response(
             data=AdminPageSerializer(page).data,
             message="Page updated",
@@ -771,12 +798,8 @@ class AdminPageDetailView(BaseAPIView):
 
     def delete(self, request: Request, page_id: UUID) -> Response:
         self.service.delete_page(page_id=page_id, admin_user=request.user)
+
         return self.no_content_response()
-
-
-# ---------------------------------------------------------------------------
-# Shop Management
-# ---------------------------------------------------------------------------
 
 
 class AdminProductListView(BaseAPIView):
@@ -796,6 +819,7 @@ class AdminProductListView(BaseAPIView):
         )
         page = self.paginator.paginate_queryset(queryset, request, view=self)
         serializer = AdminProductSerializer(page, many=True)
+
         return self.paginator.get_paginated_response(serializer.data)
 
     def post(self, request: Request) -> Response:
@@ -807,6 +831,7 @@ class AdminProductListView(BaseAPIView):
             **data,
             admin_user=request.user,
         )
+
         return self.created_response(
             data=AdminProductSerializer(product).data,
             message="Product created",
@@ -825,7 +850,10 @@ class AdminProductDetailView(BaseAPIView):
     def get(self, request: Request, product_id: UUID) -> Response:
         product = self.service.get_product_detail(product_id=product_id)
         serializer = AdminProductSerializer(product)
-        return self.success_response(data=serializer.data, message="Product detail retrieved")
+
+        return self.success_response(
+            data=serializer.data, message="Product detail retrieved"
+        )
 
     def put(self, request: Request, product_id: UUID) -> Response:
         serializer = AdminProductUpdateSerializer(data=request.data)
@@ -837,6 +865,7 @@ class AdminProductDetailView(BaseAPIView):
             **data,
             admin_user=request.user,
         )
+
         return self.success_response(
             data=AdminProductSerializer(product).data,
             message="Product updated",
@@ -844,6 +873,7 @@ class AdminProductDetailView(BaseAPIView):
 
     def delete(self, request: Request, product_id: UUID) -> Response:
         self.service.delete_product(product_id=product_id, admin_user=request.user)
+
         return self.no_content_response()
 
 
@@ -861,6 +891,7 @@ class AdminProductToggleView(BaseAPIView):
             product_id=product_id,
             admin_user=request.user,
         )
+
         return self.success_response(
             data=AdminProductSerializer(product).data,
             message="Product active status toggled",
@@ -879,7 +910,10 @@ class AdminProductStatsView(BaseAPIView):
     def get(self, request: Request, product_id: UUID) -> Response:
         stats: dict[str, Any] = self.service.get_product_stats(product_id=product_id)
         serializer = AdminProductStatsSerializer(stats)
-        return self.success_response(data=serializer.data, message="Product stats retrieved")
+
+        return self.success_response(
+            data=serializer.data, message="Product stats retrieved"
+        )
 
 
 class AdminPurchaseListView(BaseAPIView):
@@ -899,12 +933,8 @@ class AdminPurchaseListView(BaseAPIView):
         )
         page = self.paginator.paginate_queryset(queryset, request, view=self)
         serializer = AdminPurchaseSerializer(page, many=True)
+
         return self.paginator.get_paginated_response(serializer.data)
-
-
-# ---------------------------------------------------------------------------
-# Boost Management
-# ---------------------------------------------------------------------------
 
 
 class AdminBoostListView(BaseAPIView):
@@ -924,6 +954,7 @@ class AdminBoostListView(BaseAPIView):
         )
         page = self.paginator.paginate_queryset(queryset, request, view=self)
         serializer = AdminBoostSerializer(page, many=True)
+
         return self.paginator.get_paginated_response(serializer.data)
 
 
@@ -940,7 +971,10 @@ class AdminBoostDetailView(BaseAPIView):
         boost = self.service.get_boost_detail(boost_id=boost_id)
         boost_data: dict[str, Any] = AdminBoostSerializer(boost).data
         snapshots = self.service.get_boost_snapshots(boost_id=boost_id)
-        boost_data["snapshots"] = AdminBoostSnapshotSerializer(snapshots, many=True).data
+        boost_data["snapshots"] = AdminBoostSnapshotSerializer(
+            snapshots, many=True
+        ).data
+
         return self.success_response(data=boost_data, message="Boost detail retrieved")
 
 
@@ -956,7 +990,10 @@ class AdminBoostTierListView(BaseAPIView):
     def get(self, request: Request) -> Response:
         tiers = self.service.list_boost_tiers()
         serializer = AdminBoostTierSerializer(tiers, many=True)
-        return self.success_response(data=serializer.data, message="Boost tiers retrieved")
+
+        return self.success_response(
+            data=serializer.data, message="Boost tiers retrieved"
+        )
 
     def post(self, request: Request) -> Response:
         serializer = AdminBoostTierCreateSerializer(data=request.data)
@@ -967,6 +1004,7 @@ class AdminBoostTierListView(BaseAPIView):
             **data,
             admin_user=request.user,
         )
+
         return self.created_response(
             data=AdminBoostTierSerializer(tier).data,
             message="Boost tier created",
@@ -992,6 +1030,7 @@ class AdminBoostTierDetailView(BaseAPIView):
             **data,
             admin_user=request.user,
         )
+
         return self.success_response(
             data=AdminBoostTierSerializer(tier).data,
             message="Boost tier updated",
@@ -999,6 +1038,7 @@ class AdminBoostTierDetailView(BaseAPIView):
 
     def delete(self, request: Request, tier_id: UUID) -> Response:
         self.service.delete_boost_tier(tier_id=tier_id, admin_user=request.user)
+
         return self.no_content_response()
 
 
@@ -1014,12 +1054,10 @@ class AdminBoostRevenueView(BaseAPIView):
     def get(self, request: Request) -> Response:
         stats: dict[str, Any] = self.service.get_boost_revenue_stats()
         serializer = AdminBoostRevenueSerializer(stats)
-        return self.success_response(data=serializer.data, message="Boost revenue retrieved")
 
-
-# ---------------------------------------------------------------------------
-# Broadcasts
-# ---------------------------------------------------------------------------
+        return self.success_response(
+            data=serializer.data, message="Boost revenue retrieved"
+        )
 
 
 class AdminBroadcastListView(BaseAPIView):
@@ -1034,7 +1072,10 @@ class AdminBroadcastListView(BaseAPIView):
     def get(self, request: Request) -> Response:
         broadcasts = self.service.list_broadcasts()
         serializer = AdminBroadcastSerializer(broadcasts, many=True)
-        return self.success_response(data=serializer.data, message="Broadcasts retrieved")
+
+        return self.success_response(
+            data=serializer.data, message="Broadcasts retrieved"
+        )
 
 
 class AdminBroadcastCreateView(BaseAPIView):
@@ -1055,6 +1096,7 @@ class AdminBroadcastCreateView(BaseAPIView):
             **data,
             admin_user=request.user,
         )
+
         return self.created_response(
             data=AdminBroadcastSerializer(broadcast).data,
             message="Broadcast sent",
@@ -1078,12 +1120,8 @@ class AdminBroadcastDetailView(BaseAPIView):
         data["total_sent"] = detail["total_sent"]
         data["total_read"] = detail["total_read"]
         data["read_rate"] = detail["read_rate"]
+
         return self.success_response(data=data, message="Broadcast detail retrieved")
-
-
-# ---------------------------------------------------------------------------
-# Analytics
-# ---------------------------------------------------------------------------
 
 
 class AdminUserDemographicsView(BaseAPIView):
@@ -1098,7 +1136,10 @@ class AdminUserDemographicsView(BaseAPIView):
     def get(self, request: Request) -> Response:
         data: dict[str, Any] = self.service.get_user_demographics()
         serializer = AdminDemographicsSerializer(data)
-        return self.success_response(data=serializer.data, message="Demographics retrieved")
+
+        return self.success_response(
+            data=serializer.data, message="Demographics retrieved"
+        )
 
 
 class AdminContentEngagementView(BaseAPIView):
@@ -1113,11 +1154,16 @@ class AdminContentEngagementView(BaseAPIView):
     def get(self, request: Request) -> Response:
         try:
             days: int = int(request.query_params.get("days", 30))
+
         except (TypeError, ValueError):
             days = 30
+
         data: dict[str, Any] = self.service.get_content_engagement(days=days)
         serializer = AdminContentEngagementSerializer(data)
-        return self.success_response(data=serializer.data, message="Content engagement retrieved")
+
+        return self.success_response(
+            data=serializer.data, message="Content engagement retrieved"
+        )
 
 
 class AdminShopRevenueView(BaseAPIView):
@@ -1132,11 +1178,16 @@ class AdminShopRevenueView(BaseAPIView):
     def get(self, request: Request) -> Response:
         try:
             days: int = int(request.query_params.get("days", 30))
+
         except (TypeError, ValueError):
             days = 30
+
         data: dict[str, Any] = self.service.get_shop_revenue(days=days)
         serializer = AdminShopRevenueSerializer(data)
-        return self.success_response(data=serializer.data, message="Shop revenue retrieved")
+
+        return self.success_response(
+            data=serializer.data, message="Shop revenue retrieved"
+        )
 
 
 class AdminBoostPerformanceView(BaseAPIView):
@@ -1151,7 +1202,10 @@ class AdminBoostPerformanceView(BaseAPIView):
     def get(self, request: Request) -> Response:
         data: dict[str, Any] = self.service.get_boost_performance()
         serializer = AdminBoostRevenueSerializer(data)
-        return self.success_response(data=serializer.data, message="Boost performance retrieved")
+
+        return self.success_response(
+            data=serializer.data, message="Boost performance retrieved"
+        )
 
 
 class AdminBibleReadingStatsView(BaseAPIView):
@@ -1166,13 +1220,17 @@ class AdminBibleReadingStatsView(BaseAPIView):
     def get(self, request: Request) -> Response:
         data: dict[str, Any] = self.service.get_bible_reading_stats()
         serializer = AdminBibleReadingStatsSerializer(data)
-        return self.success_response(data=serializer.data, message="Bible reading stats retrieved")
+
+        return self.success_response(
+            data=serializer.data, message="Bible reading stats retrieved"
+        )
 
 
 class AdminPageCommentListView(BaseAPIView):
     """List user comments on Bible pages. Filterable by page_id."""
 
     permission_classes: list[type[BasePermission]] = [IsContentAdmin]
+
     pagination_class = StandardPageNumberPagination
 
     def __init__(self, **kwargs: Any) -> None:
@@ -1182,14 +1240,18 @@ class AdminPageCommentListView(BaseAPIView):
     def get(self, request: Request) -> Response:
         page_id_str: str | None = request.query_params.get("page_id")
         page_id: UUID | None = None
+
         if page_id_str:
             try:
                 page_id = UUID(page_id_str)
+
             except ValueError:
                 from apps.common.exceptions import BadRequestError
+
                 raise BadRequestError(detail="Invalid page_id UUID.")
 
         queryset = self.service.list_page_comments(page_id=page_id)
+
         return self.paginated_response(queryset, AdminPageCommentSerializer, request)
 
 
@@ -1207,6 +1269,7 @@ class AdminPageCommentDeleteView(BaseAPIView):
             admin_user=request.user,
             comment_id=comment_id,
         )
+
         return self.no_content_response()
 
 
@@ -1222,12 +1285,10 @@ class AdminPageLikeStatsView(BaseAPIView):
     def get(self, request: Request) -> Response:
         data: list[dict[str, Any]] = self.service.get_page_like_stats()
         serializer = AdminPageLikeStatsSerializer(data, many=True)
-        return self.success_response(data=serializer.data, message="Page like stats retrieved")
 
-
-# ---------------------------------------------------------------------------
-# Admin Logs
-# ---------------------------------------------------------------------------
+        return self.success_response(
+            data=serializer.data, message="Page like stats retrieved"
+        )
 
 
 class AdminLogListView(BaseAPIView):
@@ -1248,4 +1309,5 @@ class AdminLogListView(BaseAPIView):
         )
         page = self.paginator.paginate_queryset(queryset, request, view=self)
         serializer = AdminLogSerializer(page, many=True)
+
         return self.paginator.get_paginated_response(serializer.data)

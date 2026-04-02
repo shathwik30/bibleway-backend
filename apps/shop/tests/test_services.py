@@ -1,41 +1,37 @@
 """Tests for apps.shop.services — ProductService, PurchaseService, DownloadService."""
 
 from __future__ import annotations
-
 from unittest.mock import patch
 from uuid import uuid4
-
 import pytest
 from rest_framework.exceptions import ValidationError
-
 from apps.common.exceptions import BadRequestError, ConflictError, NotFoundError
 from apps.shop.models import Download, Product, Purchase
 from apps.shop.services import DownloadService, ProductService, PurchaseService
 
 
-# ---------------------------------------------------------------------------
-# Helper: create a Product without triggering UploadThing storage
-# ---------------------------------------------------------------------------
-
-
 def _create_product(**kwargs):
     """Create a Product row directly, bypassing FileField storage backends."""
+
     defaults = {
         "title": "Test Product",
         "description": "A test product description.",
-        "cover_image": "shop/fake/cover.jpg",  # just a string path
+        "cover_image": "shop/fake/cover.jpg",
         "product_file": "shop/fake/product.pdf",
         "price_tier": "tier_1",
         "is_free": False,
         "category": "books",
         "is_active": True,
     }
+
     defaults.update(kwargs)
+
     return Product.objects.create(**defaults)
 
 
 def _create_purchase(user, product, **kwargs):
     """Create a Purchase row directly."""
+
     defaults = {
         "user": user,
         "product": product,
@@ -44,20 +40,18 @@ def _create_purchase(user, product, **kwargs):
         "transaction_id": f"txn_{uuid4().hex[:16]}",
         "is_validated": True,
     }
+
     defaults.update(kwargs)
+
     return Purchase.objects.create(**defaults)
 
 
 def _create_download(user, product, purchase=None, **kwargs):
     """Create a Download row directly."""
+
     return Download.objects.create(
         user=user, product=product, purchase=purchase, **kwargs
     )
-
-
-# ---------------------------------------------------------------------------
-# ProductService
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
@@ -69,14 +63,12 @@ class TestProductServiceListActive:
         _create_product(title="Active 1", is_active=True, category="books")
         _create_product(title="Active 2", is_active=True, category="books")
         _create_product(title="Inactive", is_active=False, category="books")
-
         products = self.service.list_active_products()
         assert products.count() == 2
 
     def test_filter_by_category(self):
         _create_product(title="Book", is_active=True, category="books")
         _create_product(title="Song", is_active=True, category="music")
-
         products = self.service.list_active_products(category="books")
         assert products.count() == 1
         assert products.first().category == "books"
@@ -84,7 +76,6 @@ class TestProductServiceListActive:
     def test_no_category_returns_all_active(self):
         _create_product(title="Book", is_active=True, category="books")
         _create_product(title="Song", is_active=True, category="music")
-
         products = self.service.list_active_products()
         assert products.count() == 2
 
@@ -106,6 +97,7 @@ class TestProductServiceDetail:
 
     def test_get_inactive_product_raises(self):
         product = _create_product(is_active=False)
+
         with pytest.raises(NotFoundError):
             self.service.get_product_detail(product_id=product.id)
 
@@ -122,7 +114,6 @@ class TestProductServiceSearch:
     def test_search_by_title(self):
         _create_product(title="Bible Study Guide", is_active=True)
         _create_product(title="Prayer Journal", is_active=True)
-
         results = self.service.search_products(query="Bible")
         assert results.count() == 1
 
@@ -154,11 +145,6 @@ class TestProductServiceSearch:
         assert results.count() == 0
 
 
-# ---------------------------------------------------------------------------
-# PurchaseService
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.django_db
 class TestPurchaseServiceVerify:
     def setup_method(self):
@@ -168,7 +154,6 @@ class TestPurchaseServiceVerify:
     def test_verify_purchase_ios(self, mock_validate, user):
         mock_validate.return_value = {"status": 0}
         product = _create_product(is_active=True, apple_product_id="com.app.product1")
-
         purchase = self.service.verify_purchase(
             user_id=user.id,
             product_id=product.id,
@@ -176,7 +161,6 @@ class TestPurchaseServiceVerify:
             receipt_data="apple-receipt-data",
             transaction_id="txn_unique_001",
         )
-
         assert isinstance(purchase, Purchase)
         assert purchase.is_validated is True
         assert purchase.transaction_id == "txn_unique_001"
@@ -190,7 +174,6 @@ class TestPurchaseServiceVerify:
             google_product_id="com.app.product.android",
             apple_product_id="com.app.product.apple",
         )
-
         purchase = self.service.verify_purchase(
             user_id=user.id,
             product_id=product.id,
@@ -205,7 +188,6 @@ class TestPurchaseServiceVerify:
     def test_duplicate_transaction_id_rejected(self, mock_validate, user):
         mock_validate.return_value = {"status": 0}
         product = _create_product(is_active=True)
-
         self.service.verify_purchase(
             user_id=user.id,
             product_id=product.id,
@@ -225,6 +207,7 @@ class TestPurchaseServiceVerify:
 
     def test_inactive_product_raises(self, user):
         product = _create_product(is_active=False)
+
         with pytest.raises(NotFoundError, match="not found or inactive"):
             self.service.verify_purchase(
                 user_id=user.id,
@@ -262,7 +245,6 @@ class TestPurchaseServiceVerify:
     def test_increments_download_count(self, mock_validate, user):
         mock_validate.return_value = {"status": 0}
         product = _create_product(is_active=True, download_count=0)
-
         self.service.verify_purchase(
             user_id=user.id,
             product_id=product.id,
@@ -270,7 +252,6 @@ class TestPurchaseServiceVerify:
             receipt_data="receipt",
             transaction_id="txn_inc",
         )
-
         product.refresh_from_db()
         assert product.download_count == 1
 
@@ -284,19 +265,13 @@ class TestPurchaseServiceList:
         product = _create_product(is_active=True)
         _create_purchase(user, product, transaction_id="txn_a")
         _create_purchase(user, product, transaction_id="txn_b")
-        _create_purchase(user2, product, transaction_id="txn_c")  # other user
-
+        _create_purchase(user2, product, transaction_id="txn_c")
         purchases = self.service.list_user_purchases(user_id=user.id)
         assert purchases.count() == 2
 
     def test_list_empty(self, user):
         purchases = self.service.list_user_purchases(user_id=user.id)
         assert purchases.count() == 0
-
-
-# ---------------------------------------------------------------------------
-# DownloadService
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
@@ -315,7 +290,6 @@ class TestDownloadServiceRecord:
     def test_record_download_paid_with_purchase(self, user):
         product = _create_product(is_active=True, is_free=False)
         purchase = _create_purchase(user, product, is_validated=True)
-
         download = self.service.record_download(
             user_id=user.id,
             product_id=product.id,
@@ -325,6 +299,7 @@ class TestDownloadServiceRecord:
 
     def test_paid_product_without_purchase_raises(self, user):
         product = _create_product(is_active=True, is_free=False)
+
         with pytest.raises(BadRequestError, match="purchase is required"):
             self.service.record_download(
                 user_id=user.id, product_id=product.id, purchase_id=None
@@ -349,6 +324,7 @@ class TestDownloadServiceRecord:
 
     def test_inactive_product_raises(self, user):
         product = _create_product(is_active=False, is_free=True)
+
         with pytest.raises(NotFoundError):
             self.service.record_download(
                 user_id=user.id, product_id=product.id, purchase_id=None
@@ -364,8 +340,7 @@ class TestDownloadServiceList:
         product = _create_product(is_active=True, is_free=True)
         _create_download(user, product)
         _create_download(user, product)
-        _create_download(user2, product)  # other user
-
+        _create_download(user2, product)
         downloads = self.service.list_user_downloads(user_id=user.id)
         assert downloads.count() == 2
 

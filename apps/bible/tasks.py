@@ -2,7 +2,6 @@
 
 import logging
 from uuid import UUID
-
 from celery import shared_task
 
 logger = logging.getLogger(__name__)
@@ -14,6 +13,8 @@ logger = logging.getLogger(__name__)
     default_retry_delay=60,
     autoretry_for=(Exception,),
     retry_backoff=True,
+    soft_time_limit=120,
+    time_limit=180,
 )
 def translate_page_async(self, page_id: str, language_code: str) -> str | None:
     """Asynchronously translate a segregated bible page.
@@ -25,9 +26,11 @@ def translate_page_async(self, page_id: str, language_code: str) -> str | None:
     Returns:
         The UUID string of the TranslatedPageCache entry, or None on failure.
     """
+
     from .services import BibleTranslationService
 
     service = BibleTranslationService()
+
     try:
         cache_entry = service.translate_page(
             page_id=UUID(page_id),
@@ -38,7 +41,9 @@ def translate_page_async(self, page_id: str, language_code: str) -> str | None:
             page_id,
             language_code,
         )
+
         return str(cache_entry.pk)
+
     except Exception as exc:
         logger.exception(
             "Failed to translate page %s to %s: %s",

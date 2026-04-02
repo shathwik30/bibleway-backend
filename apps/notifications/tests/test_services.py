@@ -1,20 +1,12 @@
 """Tests for apps.notifications.services — NotificationService and DevicePushTokenService."""
 
 from __future__ import annotations
-
 from unittest.mock import patch
 from uuid import uuid4
-
 import pytest
-
 from apps.common.exceptions import ForbiddenError, NotFoundError
 from apps.notifications.models import DevicePushToken, Notification
 from apps.notifications.services import DevicePushTokenService, NotificationService
-
-
-# ---------------------------------------------------------------------------
-# NotificationService
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
@@ -22,9 +14,12 @@ class TestNotificationServiceCreate:
     def setup_method(self):
         self.service = NotificationService()
 
-    @patch("apps.notifications.services.NotificationService.create_notification.__module__")
+    @patch(
+        "apps.notifications.services.NotificationService.create_notification.__module__"
+    )
     def test_create_notification(self, _mock, user, user2):
         """create_notification persists a notification and dispatches a push task."""
+
         with patch("apps.notifications.tasks.send_push_notification.delay"):
             notification = self.service.create_notification(
                 recipient_id=user.id,
@@ -42,7 +37,9 @@ class TestNotificationServiceCreate:
         assert notification.is_read is False
 
     def test_create_notification_dispatches_push(self, user, user2):
-        with patch("apps.notifications.tasks.send_push_notification.delay") as mock_push:
+        with patch(
+            "apps.notifications.tasks.send_push_notification.delay"
+        ) as mock_push:
             self.service.create_notification(
                 recipient_id=user.id,
                 sender_id=user2.id,
@@ -57,6 +54,7 @@ class TestNotificationServiceCreate:
 
     def test_create_notification_push_failure_does_not_raise(self, user, user2):
         """If the push task dispatch fails, the notification is still created."""
+
         with patch(
             "apps.notifications.tasks.send_push_notification.delay",
             side_effect=Exception("Redis down"),
@@ -68,6 +66,7 @@ class TestNotificationServiceCreate:
                 title="Follower",
                 body="Followed.",
             )
+
         assert notification.pk is not None
 
     def test_create_with_data_payload(self, user, user2):
@@ -80,6 +79,7 @@ class TestNotificationServiceCreate:
                 body="Body",
                 data={"post_id": "abc123"},
             )
+
         assert notification.data == {"post_id": "abc123"}
 
 
@@ -93,8 +93,7 @@ class TestNotificationServiceList:
 
         NotificationFactory(recipient=user, sender=user2)
         NotificationFactory(recipient=user, sender=user2)
-        NotificationFactory(recipient=user2, sender=user)  # not for user
-
+        NotificationFactory(recipient=user2, sender=user)
         qs = self.service.list_user_notifications(user_id=user.id)
         assert qs.count() == 2
 
@@ -123,6 +122,7 @@ class TestNotificationServiceMarkRead:
         from conftest import NotificationFactory
 
         n = NotificationFactory(recipient=user2, sender=user)
+
         with pytest.raises(NotFoundError):
             self.service.mark_as_read(user_id=user.id, notification_id=n.id)
 
@@ -131,8 +131,7 @@ class TestNotificationServiceMarkRead:
 
         NotificationFactory(recipient=user, sender=user2, is_read=False)
         NotificationFactory(recipient=user, sender=user2, is_read=False)
-        NotificationFactory(recipient=user, sender=user2, is_read=True)  # already read
-
+        NotificationFactory(recipient=user, sender=user2, is_read=True)
         count = self.service.mark_all_as_read(user_id=user.id)
         assert count == 2
 
@@ -155,7 +154,6 @@ class TestNotificationServiceUnreadCount:
         NotificationFactory(recipient=user, sender=user2, is_read=False)
         NotificationFactory(recipient=user, sender=user2, is_read=False)
         NotificationFactory(recipient=user, sender=user2, is_read=True)
-
         assert self.service.get_unread_count(user_id=user.id) == 2
 
     def test_zero_unread(self, user):
@@ -182,13 +180,9 @@ class TestNotificationServiceDelete:
         from conftest import NotificationFactory
 
         n = NotificationFactory(recipient=user2, sender=user)
+
         with pytest.raises(ForbiddenError, match="only delete your own"):
             self.service.delete_notification(user_id=user.id, notification_id=n.id)
-
-
-# ---------------------------------------------------------------------------
-# DevicePushTokenService
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
@@ -248,11 +242,13 @@ class TestDevicePushTokenServiceDeactivate:
         self.service.register_token(
             user_id=user2.id, token="belongs-to-user2", platform="ios"
         )
+
         with pytest.raises(NotFoundError, match="not found"):
             self.service.deactivate_token(
                 user_id=user.id,
                 token="belongs-to-user2",
             )
+
         token = DevicePushToken.objects.get(token="belongs-to-user2")
         assert token.is_active is True
 
@@ -275,7 +271,6 @@ class TestDevicePushTokenServiceGetActive:
         DevicePushTokenFactory(user=user, is_active=True, token="active1")
         DevicePushTokenFactory(user=user, is_active=True, token="active2")
         DevicePushTokenFactory(user=user, is_active=False, token="inactive1")
-
         tokens = self.service.get_active_tokens(user_id=user.id)
         assert tokens.count() == 2
 
@@ -287,6 +282,5 @@ class TestDevicePushTokenServiceGetActive:
         from conftest import DevicePushTokenFactory
 
         DevicePushTokenFactory(user=user2, is_active=True, token="other-user-token")
-
         tokens = self.service.get_active_tokens(user_id=user.id)
         assert tokens.count() == 0

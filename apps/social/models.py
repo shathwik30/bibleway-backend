@@ -2,17 +2,17 @@ from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
-
+from apps.common.constants import MediaType
 from apps.common.models import CreatedAtModel, TimeStampedModel
 from apps.common.storage_backends import PublicMediaStorage
 from apps.common.validators import validate_file_size_100mb
 
 
-def post_media_upload_path(instance, filename):
+def post_media_upload_path(instance: "PostMedia", filename: str) -> str:
     return f"posts/{instance.post_id}/{filename}"
 
 
-def prayer_media_upload_path(instance, filename):
+def prayer_media_upload_path(instance: "PrayerMedia", filename: str) -> str:
     return f"prayers/{instance.prayer_id}/{filename}"
 
 
@@ -24,12 +24,16 @@ class Post(TimeStampedModel):
         on_delete=models.CASCADE,
         related_name="posts",
     )
+
     text_content = models.TextField(max_length=2000, blank=True, default="")
     is_boosted = models.BooleanField(default=False, db_index=True)
+    reaction_count = models.PositiveIntegerField(default=0)
+    comment_count = models.PositiveIntegerField(default=0)
 
-    # Reverse generic relations
     reactions = GenericRelation("social.Reaction", related_query_name="post")
+
     comments = GenericRelation("social.Comment", related_query_name="post")
+
     reports = GenericRelation("social.Report", related_query_name="post")
 
     class Meta:
@@ -41,28 +45,27 @@ class Post(TimeStampedModel):
             models.Index(fields=["-created_at", "is_boosted"]),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         preview = self.text_content[:50] if self.text_content else "(media only)"
+
         return f"Post by {self.author.full_name}: {preview}"
 
 
 class PostMedia(CreatedAtModel):
     """Media attachment for a Post. Max 10 images or 1 video per post."""
 
-    class MediaType(models.TextChoices):
-        IMAGE = "image", "Image"
-        VIDEO = "video", "Video"
-
     post = models.ForeignKey(
         Post,
         on_delete=models.CASCADE,
         related_name="media",
     )
+
     file = models.FileField(
         upload_to=post_media_upload_path,
         storage=PublicMediaStorage(),
         validators=[validate_file_size_100mb],
     )
+
     media_type = models.CharField(max_length=10, choices=MediaType.choices)
     order = models.PositiveSmallIntegerField(default=0)
 
@@ -74,7 +77,7 @@ class PostMedia(CreatedAtModel):
             models.Index(fields=["post", "order"]),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.media_type} for Post {self.post_id} (order: {self.order})"
 
 
@@ -86,12 +89,16 @@ class Prayer(TimeStampedModel):
         on_delete=models.CASCADE,
         related_name="prayers",
     )
+
     title = models.CharField(max_length=255)
     description = models.TextField(max_length=2000, blank=True, default="")
+    reaction_count = models.PositiveIntegerField(default=0)
+    comment_count = models.PositiveIntegerField(default=0)
 
-    # Reverse generic relations
     reactions = GenericRelation("social.Reaction", related_query_name="prayer")
+
     comments = GenericRelation("social.Comment", related_query_name="prayer")
+
     reports = GenericRelation("social.Report", related_query_name="prayer")
 
     class Meta:
@@ -102,27 +109,25 @@ class Prayer(TimeStampedModel):
             models.Index(fields=["author", "-created_at"]),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"Prayer by {self.author.full_name}: {self.title}"
 
 
 class PrayerMedia(CreatedAtModel):
     """Media attachment for a Prayer."""
 
-    class MediaType(models.TextChoices):
-        IMAGE = "image", "Image"
-        VIDEO = "video", "Video"
-
     prayer = models.ForeignKey(
         Prayer,
         on_delete=models.CASCADE,
         related_name="media",
     )
+
     file = models.FileField(
         upload_to=prayer_media_upload_path,
         storage=PublicMediaStorage(),
         validators=[validate_file_size_100mb],
     )
+
     media_type = models.CharField(max_length=10, choices=MediaType.choices)
     order = models.PositiveSmallIntegerField(default=0)
 
@@ -134,7 +139,7 @@ class PrayerMedia(CreatedAtModel):
             models.Index(fields=["prayer", "order"]),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.media_type} for Prayer {self.prayer_id} (order: {self.order})"
 
 
@@ -156,12 +161,15 @@ class Reaction(CreatedAtModel):
         on_delete=models.CASCADE,
         related_name="reactions",
     )
+
     content_type = models.ForeignKey(
         ContentType,
         on_delete=models.CASCADE,
         limit_choices_to=models.Q(app_label="social", model__in=["post", "prayer"]),
     )
+
     object_id = models.UUIDField()
+
     content_object = GenericForeignKey("content_type", "object_id")
 
     emoji_type = models.CharField(max_length=20, choices=EmojiType.choices)
@@ -179,9 +187,10 @@ class Reaction(CreatedAtModel):
         indexes = [
             models.Index(fields=["content_type", "object_id"]),
             models.Index(fields=["user"]),
+            models.Index(fields=["user", "content_type", "object_id"]),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.user.full_name} reacted {self.emoji_type}"
 
 
@@ -193,12 +202,15 @@ class Comment(TimeStampedModel):
         on_delete=models.CASCADE,
         related_name="comments",
     )
+
     content_type = models.ForeignKey(
         ContentType,
         on_delete=models.CASCADE,
         limit_choices_to=models.Q(app_label="social", model__in=["post", "prayer"]),
     )
+
     object_id = models.UUIDField()
+
     content_object = GenericForeignKey("content_type", "object_id")
 
     text = models.TextField(max_length=1000)
@@ -212,7 +224,7 @@ class Comment(TimeStampedModel):
             models.Index(fields=["user"]),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"Comment by {self.user.full_name} on {self.content_type.model}"
 
 
@@ -224,22 +236,24 @@ class Reply(TimeStampedModel):
         on_delete=models.CASCADE,
         related_name="replies",
     )
+
     comment = models.ForeignKey(
         Comment,
         on_delete=models.CASCADE,
         related_name="replies",
     )
+
     text = models.TextField(max_length=1000)
 
     class Meta:
         verbose_name = "reply"
         verbose_name_plural = "replies"
-        ordering = ["created_at"]  # Oldest first within a comment thread
+        ordering = ["created_at"]
         indexes = [
             models.Index(fields=["comment", "created_at"]),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"Reply by {self.user.full_name} to Comment {self.comment_id}"
 
 
@@ -262,6 +276,7 @@ class Report(TimeStampedModel):
         on_delete=models.CASCADE,
         related_name="reports_filed",
     )
+
     content_type = models.ForeignKey(
         ContentType,
         on_delete=models.CASCADE,
@@ -270,7 +285,9 @@ class Report(TimeStampedModel):
         )
         | models.Q(app_label="accounts", model="user"),
     )
+
     object_id = models.UUIDField()
+
     content_object = GenericForeignKey("content_type", "object_id")
 
     reason = models.CharField(max_length=20, choices=Reason.choices)
@@ -280,6 +297,7 @@ class Report(TimeStampedModel):
         choices=Status.choices,
         default=Status.PENDING,
     )
+
     reviewed_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -287,6 +305,7 @@ class Report(TimeStampedModel):
         blank=True,
         related_name="reports_reviewed",
     )
+
     reviewed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
@@ -299,5 +318,5 @@ class Report(TimeStampedModel):
             models.Index(fields=["reporter"]),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"Report by {self.reporter.full_name}: {self.reason}"

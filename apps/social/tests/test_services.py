@@ -1,13 +1,10 @@
 """Tests for social app services."""
 
 from __future__ import annotations
-
 import uuid
-
 import pytest
 from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
-
 from apps.common.exceptions import BadRequestError, ForbiddenError, NotFoundError
 from apps.social.models import Comment, Post, Prayer, Reaction, Reply, Report
 from apps.social.services import (
@@ -36,14 +33,12 @@ from conftest import (
 @pytest.fixture(autouse=True)
 def _clear_cache():
     """Clear the cache before each test to avoid stale blocked-user data."""
+
     cache.clear()
+
     yield
+
     cache.clear()
-
-
-# ──────────────────────────────────────────────────────────────
-# Content-type resolution helpers
-# ──────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -82,11 +77,11 @@ class TestContentTypeHelpers:
     def test_validate_object_exists_success(self):
         post = PostFactory()
         ct = ContentType.objects.get_for_model(Post)
-        # Should not raise
         _validate_object_exists(ct, post.pk)
 
     def test_validate_object_exists_not_found(self):
         ct = ContentType.objects.get_for_model(Post)
+
         with pytest.raises(NotFoundError, match="not found"):
             _validate_object_exists(ct, uuid.uuid4())
 
@@ -118,16 +113,15 @@ class TestContentTypeHelpers:
         user = UserFactory()
         post = PostFactory()
         ct = ContentType.objects.get_for_model(Post)
-        # Should not raise
         _check_block_for_content(user, ct, post.pk)
 
     def test_check_block_for_content_blocked(self):
         user = UserFactory()
         author = UserFactory()
         post = PostFactory(author=author)
-        # author blocks user
         BlockRelationshipFactory(blocker=author, blocked=user)
         ct = ContentType.objects.get_for_model(Post)
+
         with pytest.raises(ForbiddenError, match="cannot interact"):
             _check_block_for_content(user, ct, post.pk)
 
@@ -135,16 +129,11 @@ class TestContentTypeHelpers:
         user = UserFactory()
         author = UserFactory()
         post = PostFactory(author=author)
-        # user blocks author
         BlockRelationshipFactory(blocker=user, blocked=author)
         ct = ContentType.objects.get_for_model(Post)
+
         with pytest.raises(ForbiddenError, match="cannot interact"):
             _check_block_for_content(user, ct, post.pk)
-
-
-# ──────────────────────────────────────────────────────────────
-# PostService
-# ──────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -163,6 +152,7 @@ class TestPostService:
 
     def test_create_post_empty_raises_bad_request(self):
         user = UserFactory()
+
         with pytest.raises(BadRequestError, match="must have text content"):
             self.service.create_post(author=user, text_content="", media_files=None)
 
@@ -181,7 +171,6 @@ class TestPostService:
         blocked_author = UserFactory()
         PostFactory(author=blocked_author, text_content="Hidden")
         BlockRelationshipFactory(blocker=viewer, blocked=blocked_author)
-
         feed = list(self.service.get_feed(requesting_user=viewer))
         assert len(feed) == 1
         assert feed[0].text_content == "Visible"
@@ -193,7 +182,6 @@ class TestPostService:
         blocker = UserFactory()
         PostFactory(author=blocker, text_content="Hidden")
         BlockRelationshipFactory(blocker=blocker, blocked=viewer)
-
         feed = list(self.service.get_feed(requesting_user=viewer))
         assert len(feed) == 1
         assert feed[0].text_content == "Should see"
@@ -201,16 +189,13 @@ class TestPostService:
     def test_get_feed_annotates_counts(self):
         author = UserFactory()
         post = PostFactory(author=author)
-        # Add a reaction
         ct = ContentType.objects.get_for_model(Post)
         Reaction.objects.create(
             user=UserFactory(), content_type=ct, object_id=post.pk, emoji_type="heart"
         )
-        # Add a comment
         Comment.objects.create(
             user=UserFactory(), content_type=ct, object_id=post.pk, text="Hello"
         )
-
         viewer = UserFactory()
         feed = list(self.service.get_feed(requesting_user=viewer))
         assert len(feed) == 1
@@ -229,11 +214,13 @@ class TestPostService:
         viewer = UserFactory()
         post = PostFactory(author=author)
         BlockRelationshipFactory(blocker=author, blocked=viewer)
+
         with pytest.raises(NotFoundError):
             self.service.get_by_id_for_user(post.pk, requesting_user=viewer)
 
     def test_get_by_id_for_user_nonexistent_raises_not_found(self):
         viewer = UserFactory()
+
         with pytest.raises(NotFoundError):
             self.service.get_by_id_for_user(uuid.uuid4(), requesting_user=viewer)
 
@@ -247,11 +234,13 @@ class TestPostService:
         author = UserFactory()
         other = UserFactory()
         post = PostFactory(author=author)
+
         with pytest.raises(ForbiddenError, match="only delete your own"):
             self.service.delete_post(post_id=post.pk, requesting_user=other)
 
     def test_delete_post_nonexistent_raises_not_found(self):
         user = UserFactory()
+
         with pytest.raises(NotFoundError):
             self.service.delete_post(post_id=uuid.uuid4(), requesting_user=user)
 
@@ -283,7 +272,7 @@ class TestPostService:
         viewer = UserFactory()
         PostFactory(author=author)
         PostFactory(author=author)
-        PostFactory(author=UserFactory())  # another user's post
+        PostFactory(author=UserFactory())
         posts = list(
             self.service.get_user_posts(user_id=author.pk, requesting_user=viewer)
         )
@@ -298,11 +287,6 @@ class TestPostService:
             self.service.get_user_posts(user_id=author.pk, requesting_user=viewer)
         )
         assert len(posts) == 0
-
-
-# ──────────────────────────────────────────────────────────────
-# PrayerService
-# ──────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -342,7 +326,6 @@ class TestPrayerService:
         PrayerFactory(author=author)
         PrayerFactory(author=blocked_author)
         BlockRelationshipFactory(blocker=viewer, blocked=blocked_author)
-
         feed = list(self.service.get_feed(requesting_user=viewer))
         assert len(feed) == 1
 
@@ -352,7 +335,6 @@ class TestPrayerService:
         PrayerFactory(author=blocker)
         PrayerFactory(author=UserFactory())
         BlockRelationshipFactory(blocker=blocker, blocked=viewer)
-
         feed = list(self.service.get_feed(requesting_user=viewer))
         assert len(feed) == 1
 
@@ -367,11 +349,13 @@ class TestPrayerService:
         viewer = UserFactory()
         prayer = PrayerFactory(author=author)
         BlockRelationshipFactory(blocker=author, blocked=viewer)
+
         with pytest.raises(NotFoundError):
             self.service.get_by_id_for_user(prayer.pk, requesting_user=viewer)
 
     def test_get_by_id_for_user_nonexistent_raises_not_found(self):
         viewer = UserFactory()
+
         with pytest.raises(NotFoundError):
             self.service.get_by_id_for_user(uuid.uuid4(), requesting_user=viewer)
 
@@ -385,11 +369,13 @@ class TestPrayerService:
         author = UserFactory()
         other = UserFactory()
         prayer = PrayerFactory(author=author)
+
         with pytest.raises(ForbiddenError, match="only delete your own"):
             self.service.delete_prayer(prayer_id=prayer.pk, requesting_user=other)
 
     def test_delete_prayer_nonexistent_raises_not_found(self):
         user = UserFactory()
+
         with pytest.raises(NotFoundError):
             self.service.delete_prayer(prayer_id=uuid.uuid4(), requesting_user=user)
 
@@ -442,17 +428,11 @@ class TestPrayerService:
         Comment.objects.create(
             user=UserFactory(), content_type=ct, object_id=prayer.pk, text="Praying!"
         )
-
         viewer = UserFactory()
         feed = list(self.service.get_feed(requesting_user=viewer))
         assert len(feed) == 1
         assert feed[0].reaction_count == 1
         assert feed[0].comment_count == 1
-
-
-# ──────────────────────────────────────────────────────────────
-# ReactionService
-# ──────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -476,7 +456,6 @@ class TestReactionService:
     def test_toggle_reaction_same_emoji_removes(self):
         user = UserFactory()
         post = PostFactory()
-        # Create
         ReactionService.toggle_reaction(
             user=user,
             content_type_model="post",
@@ -484,7 +463,6 @@ class TestReactionService:
             emoji_type="heart",
         )
         assert Reaction.objects.count() == 1
-        # Toggle off
         result = ReactionService.toggle_reaction(
             user=user,
             content_type_model="post",
@@ -497,14 +475,12 @@ class TestReactionService:
     def test_toggle_reaction_different_emoji_updates(self):
         user = UserFactory()
         post = PostFactory()
-        # Create with heart
         ReactionService.toggle_reaction(
             user=user,
             content_type_model="post",
             object_id=post.pk,
             emoji_type="heart",
         )
-        # Change to fire
         reaction = ReactionService.toggle_reaction(
             user=user,
             content_type_model="post",
@@ -529,6 +505,7 @@ class TestReactionService:
 
     def test_toggle_reaction_invalid_content_type(self):
         user = UserFactory()
+
         with pytest.raises(BadRequestError, match="Invalid content type"):
             ReactionService.toggle_reaction(
                 user=user,
@@ -539,6 +516,7 @@ class TestReactionService:
 
     def test_toggle_reaction_nonexistent_object(self):
         user = UserFactory()
+
         with pytest.raises(NotFoundError, match="not found"):
             ReactionService.toggle_reaction(
                 user=user,
@@ -552,6 +530,7 @@ class TestReactionService:
         author = UserFactory()
         post = PostFactory(author=author)
         BlockRelationshipFactory(blocker=author, blocked=user)
+
         with pytest.raises(ForbiddenError, match="cannot interact"):
             ReactionService.toggle_reaction(
                 user=user,
@@ -577,6 +556,7 @@ class TestReactionService:
     def test_remove_reaction_not_found(self):
         user = UserFactory()
         post = PostFactory()
+
         with pytest.raises(NotFoundError, match="No reaction found"):
             ReactionService.remove_reaction(
                 user=user, content_type_model="post", object_id=post.pk
@@ -639,6 +619,7 @@ class TestReactionService:
     def test_toggle_reaction_all_emoji_types(self):
         """Verify all emoji types can be used."""
         user = UserFactory()
+
         for emoji in ["praying_hands", "heart", "fire", "amen", "cross"]:
             post = PostFactory()
             reaction = ReactionService.toggle_reaction(
@@ -648,11 +629,6 @@ class TestReactionService:
                 emoji_type=emoji,
             )
             assert reaction.emoji_type == emoji
-
-
-# ──────────────────────────────────────────────────────────────
-# CommentService
-# ──────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -689,6 +665,7 @@ class TestCommentService:
 
     def test_create_comment_invalid_content_type(self):
         user = UserFactory()
+
         with pytest.raises(BadRequestError, match="Invalid content type"):
             self.service.create_comment(
                 user=user,
@@ -699,6 +676,7 @@ class TestCommentService:
 
     def test_create_comment_nonexistent_object(self):
         user = UserFactory()
+
         with pytest.raises(NotFoundError, match="not found"):
             self.service.create_comment(
                 user=user,
@@ -712,6 +690,7 @@ class TestCommentService:
         author = UserFactory()
         post = PostFactory(author=author)
         BlockRelationshipFactory(blocker=author, blocked=user)
+
         with pytest.raises(ForbiddenError, match="cannot interact"):
             self.service.create_comment(
                 user=user,
@@ -771,15 +750,15 @@ class TestCommentService:
         comment = self.service.create_comment(
             user=user, content_type_model="post", object_id=post.pk, text="My comment"
         )
+
         with pytest.raises(ForbiddenError, match="only delete your own"):
             self.service.delete_comment(comment_id=comment.pk, requesting_user=other)
 
     def test_delete_comment_nonexistent_raises_not_found(self):
         user = UserFactory()
+
         with pytest.raises(NotFoundError):
-            self.service.delete_comment(
-                comment_id=uuid.uuid4(), requesting_user=user
-            )
+            self.service.delete_comment(comment_id=uuid.uuid4(), requesting_user=user)
 
     def test_list_comments_annotates_reply_count(self):
         user = UserFactory()
@@ -789,7 +768,6 @@ class TestCommentService:
         )
         Reply.objects.create(user=UserFactory(), comment=comment, text="Reply 1")
         Reply.objects.create(user=UserFactory(), comment=comment, text="Reply 2")
-
         comments = list(
             self.service.list_comments_for_content(
                 content_type_model="post", object_id=post.pk
@@ -797,11 +775,6 @@ class TestCommentService:
         )
         assert len(comments) == 1
         assert comments[0].reply_count == 2
-
-
-# ──────────────────────────────────────────────────────────────
-# ReplyService
-# ──────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -816,6 +789,7 @@ class TestReplyService:
         user = user or UserFactory()
         post = post or PostFactory()
         ct = ContentType.objects.get_for_model(Post)
+
         return Comment.objects.create(
             user=user, content_type=ct, object_id=post.pk, text="Test comment"
         )
@@ -832,10 +806,9 @@ class TestReplyService:
 
     def test_create_reply_nonexistent_comment_raises_not_found(self):
         user = UserFactory()
+
         with pytest.raises(NotFoundError, match="Comment.*not found"):
-            self.service.create_reply(
-                user=user, comment_id=uuid.uuid4(), text="Reply"
-            )
+            self.service.create_reply(user=user, comment_id=uuid.uuid4(), text="Reply")
 
     def test_create_reply_blocked_user_raises_forbidden(self):
         author = UserFactory()
@@ -867,9 +840,7 @@ class TestReplyService:
 
     def test_list_replies_for_nonexistent_comment_raises_not_found(self):
         with pytest.raises(NotFoundError, match="Comment.*not found"):
-            list(
-                self.service.list_replies_for_comment(comment_id=uuid.uuid4())
-            )
+            list(self.service.list_replies_for_comment(comment_id=uuid.uuid4()))
 
     def test_list_replies_for_comment_empty(self):
         comment = self._make_comment()
@@ -892,18 +863,15 @@ class TestReplyService:
         reply = self.service.create_reply(
             user=user, comment_id=comment.pk, text="My reply"
         )
+
         with pytest.raises(ForbiddenError, match="only delete your own"):
             self.service.delete_reply(reply_id=reply.pk, requesting_user=other)
 
     def test_delete_reply_nonexistent_raises_not_found(self):
         user = UserFactory()
+
         with pytest.raises(NotFoundError):
             self.service.delete_reply(reply_id=uuid.uuid4(), requesting_user=user)
-
-
-# ──────────────────────────────────────────────────────────────
-# ReportService
-# ──────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -969,6 +937,7 @@ class TestReportService:
     def test_create_report_self_reporting_raises_bad_request(self):
         user = UserFactory()
         post = PostFactory(author=user)
+
         with pytest.raises(BadRequestError, match="cannot report your own"):
             self.service.create_report(
                 reporter=user,
@@ -989,7 +958,6 @@ class TestReportService:
             object_id=user.pk,
             reason="spam",
         )
-        # The report is created because User model lacks author/user FK.
         assert report.pk is not None
 
     def test_create_report_duplicate_pending_raises_bad_request(self):
@@ -1001,6 +969,7 @@ class TestReportService:
             object_id=post.pk,
             reason="spam",
         )
+
         with pytest.raises(BadRequestError, match="already filed a pending report"):
             self.service.create_report(
                 reporter=reporter,
@@ -1018,11 +987,8 @@ class TestReportService:
             object_id=post.pk,
             reason="spam",
         )
-        # Mark the first report as reviewed
         report.status = Report.Status.REVIEWED
         report.save(update_fields=["status"])
-
-        # Now a new pending report should be allowed
         new_report = self.service.create_report(
             reporter=reporter,
             content_type_model="post",
@@ -1043,7 +1009,6 @@ class TestReportService:
         )
         report.status = Report.Status.DISMISSED
         report.save(update_fields=["status"])
-
         new_report = self.service.create_report(
             reporter=reporter,
             content_type_model="post",
@@ -1054,6 +1019,7 @@ class TestReportService:
 
     def test_create_report_nonexistent_object(self):
         reporter = UserFactory()
+
         with pytest.raises(NotFoundError, match="not found"):
             self.service.create_report(
                 reporter=reporter,
@@ -1064,6 +1030,7 @@ class TestReportService:
 
     def test_create_report_invalid_content_type(self):
         reporter = UserFactory()
+
         with pytest.raises(BadRequestError, match="Invalid content type"):
             self.service.create_report(
                 reporter=reporter,
@@ -1077,7 +1044,6 @@ class TestReportService:
         post1 = PostFactory()
         post2 = PostFactory()
         post3 = PostFactory()
-
         self.service.create_report(
             reporter=reporter,
             content_type_model="post",
@@ -1096,10 +1062,8 @@ class TestReportService:
             object_id=post3.pk,
             reason="other",
         )
-        # Mark one as reviewed
         r2.status = Report.Status.REVIEWED
         r2.save(update_fields=["status"])
-
         pending = list(self.service.list_pending_reports())
         assert len(pending) == 2
         assert all(r.status == Report.Status.PENDING for r in pending)
@@ -1110,6 +1074,7 @@ class TestReportService:
 
     def test_create_report_all_reason_types(self):
         reporter = UserFactory()
+
         for reason in ["inappropriate", "spam", "false_teaching", "other"]:
             post = PostFactory()
             report = self.service.create_report(

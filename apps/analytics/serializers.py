@@ -1,15 +1,7 @@
 from __future__ import annotations
-
 from rest_framework import serializers
-
 from apps.common.serializers import BaseModelSerializer
-
 from .models import BoostAnalyticSnapshot, PostBoost, PostView
-
-
-# ---------------------------------------------------------------------------
-# View recording serializer
-# ---------------------------------------------------------------------------
 
 
 class RecordViewSerializer(serializers.Serializer):
@@ -18,16 +10,12 @@ class RecordViewSerializer(serializers.Serializer):
     content_type_model = serializers.ChoiceField(
         choices=[("post", "Post"), ("prayer", "Prayer")]
     )
+
     object_id = serializers.UUIDField()
     view_type = serializers.ChoiceField(
         choices=PostView.ViewType.choices,
         default=PostView.ViewType.VIEW,
     )
-
-
-# ---------------------------------------------------------------------------
-# Post analytics serializer
-# ---------------------------------------------------------------------------
 
 
 class PostAnalyticsSerializer(serializers.Serializer):
@@ -37,11 +25,6 @@ class PostAnalyticsSerializer(serializers.Serializer):
     reactions = serializers.IntegerField(read_only=True)
     comments = serializers.IntegerField(read_only=True)
     shares = serializers.IntegerField(read_only=True)
-
-
-# ---------------------------------------------------------------------------
-# Boost serializers
-# ---------------------------------------------------------------------------
 
 
 class PostBoostSerializer(BaseModelSerializer):
@@ -85,11 +68,6 @@ class PostBoostCreateSerializer(serializers.Serializer):
     receipt_data = serializers.CharField()
     transaction_id = serializers.CharField(max_length=255)
     duration_days = serializers.IntegerField(min_value=1, max_value=365)
-
-
-# ---------------------------------------------------------------------------
-# Boost analytic snapshot serializer
-# ---------------------------------------------------------------------------
 
 
 class BoostAnalyticSnapshotSerializer(BaseModelSerializer):

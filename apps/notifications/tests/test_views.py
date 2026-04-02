@@ -1,16 +1,9 @@
 """Tests for apps.notifications.views — API endpoints for notifications and device tokens."""
 
 from __future__ import annotations
-
 from uuid import uuid4
-
 import pytest
 from rest_framework import status
-
-
-# ---------------------------------------------------------------------------
-# Notification list
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
@@ -30,8 +23,7 @@ class TestNotificationListView:
         from conftest import NotificationFactory
 
         NotificationFactory(recipient=user, sender=user2)
-        NotificationFactory(recipient=user2, sender=user)  # other user
-
+        NotificationFactory(recipient=user2, sender=user)
         response = auth_client.get(self.url)
         results = response.data["data"]["results"]
         assert len(results) == 1
@@ -39,11 +31,6 @@ class TestNotificationListView:
     def test_unauthenticated_returns_401(self, api_client):
         response = api_client.get(self.url)
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
-
-
-# ---------------------------------------------------------------------------
-# Notification mark read
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
@@ -63,7 +50,6 @@ class TestNotificationMarkReadView:
 
         NotificationFactory(recipient=user, sender=user2, is_read=False)
         NotificationFactory(recipient=user, sender=user2, is_read=False)
-
         response = auth_client.post(self.url, {})
         assert response.status_code == status.HTTP_200_OK
         assert response.data["data"]["updated_count"] == 2
@@ -71,11 +57,6 @@ class TestNotificationMarkReadView:
     def test_mark_nonexistent_returns_404(self, auth_client, user):
         response = auth_client.post(self.url, {"notification_id": str(uuid4())})
         assert response.status_code == status.HTTP_404_NOT_FOUND
-
-
-# ---------------------------------------------------------------------------
-# Notification unread count
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
@@ -88,7 +69,6 @@ class TestNotificationUnreadCountView:
         NotificationFactory(recipient=user, sender=user2, is_read=False)
         NotificationFactory(recipient=user, sender=user2, is_read=False)
         NotificationFactory(recipient=user, sender=user2, is_read=True)
-
         response = auth_client.get(self.url)
         assert response.status_code == status.HTTP_200_OK
         assert response.data["data"]["unread_count"] == 2
@@ -97,11 +77,6 @@ class TestNotificationUnreadCountView:
         response = auth_client.get(self.url)
         assert response.status_code == status.HTTP_200_OK
         assert response.data["data"]["unread_count"] == 0
-
-
-# ---------------------------------------------------------------------------
-# Notification delete
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
@@ -123,16 +98,12 @@ class TestNotificationDeleteView:
     def test_delete_other_users_notification_returns_403(
         self, auth_client, user, user2
     ):
+
         from conftest import NotificationFactory
 
         n = NotificationFactory(recipient=user2, sender=user)
         response = auth_client.delete(self._url(n.id))
         assert response.status_code == status.HTTP_403_FORBIDDEN
-
-
-# ---------------------------------------------------------------------------
-# Device token register
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
@@ -168,11 +139,6 @@ class TestDeviceTokenRegisterView:
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
-# ---------------------------------------------------------------------------
-# Device token deregister
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.django_db
 class TestDeviceTokenDeregisterView:
     url = "/api/v1/notifications/device-tokens/deregister/"
@@ -192,8 +158,9 @@ class TestDeviceTokenDeregisterView:
     def test_deregister_other_users_token_returns_404(self, auth_client, user, user2):
         from conftest import DevicePushTokenFactory
 
-        DevicePushTokenFactory(user=user2, token="belongs-to-someone-else", is_active=True)
-
+        DevicePushTokenFactory(
+            user=user2, token="belongs-to-someone-else", is_active=True
+        )
         response = auth_client.post(self.url, {"token": "belongs-to-someone-else"})
         assert response.status_code == status.HTTP_404_NOT_FOUND
 

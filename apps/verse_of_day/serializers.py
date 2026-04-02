@@ -1,15 +1,7 @@
 from __future__ import annotations
-
 from rest_framework import serializers
-
 from apps.common.serializers import BaseTimestampedSerializer
-
 from .models import VerseFallbackPool, VerseOfDay
-
-
-# ---------------------------------------------------------------------------
-# Verse of the Day serializer
-# ---------------------------------------------------------------------------
 
 
 class VerseOfDaySerializer(BaseTimestampedSerializer):
@@ -29,11 +21,6 @@ class VerseOfDaySerializer(BaseTimestampedSerializer):
         ]
 
 
-# ---------------------------------------------------------------------------
-# Verse fallback pool serializer
-# ---------------------------------------------------------------------------
-
-
 class VerseFallbackPoolSerializer(BaseTimestampedSerializer):
     """Full read representation of a fallback pool verse."""
 
@@ -48,11 +35,6 @@ class VerseFallbackPoolSerializer(BaseTimestampedSerializer):
             "created_at",
             "updated_at",
         ]
-
-
-# ---------------------------------------------------------------------------
-# Unified verse response serializer
-# ---------------------------------------------------------------------------
 
 
 class UnifiedVerseResponseSerializer(serializers.Serializer):

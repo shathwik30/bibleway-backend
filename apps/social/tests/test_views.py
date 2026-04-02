@@ -1,16 +1,12 @@
 """Tests for social app API views."""
 
 from __future__ import annotations
-
 import uuid
-
 import pytest
 from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
 from rest_framework import status
-
 from apps.social.models import Comment, Post, Prayer, Reaction, Reply, Report
-
 from conftest import (
     BlockRelationshipFactory,
     PostFactory,
@@ -18,25 +14,26 @@ from conftest import (
     UserFactory,
 )
 
-
 POSTS_URL = "/api/v1/social/posts/"
+
 PRAYERS_URL = "/api/v1/social/prayers/"
+
 COMMENTS_URL = "/api/v1/social/comments/"
+
 REPORTS_URL = "/api/v1/social/reports/"
+
 REPORTS_PENDING_URL = "/api/v1/social/reports/pending/"
 
 
 @pytest.fixture(autouse=True)
 def _clear_cache():
     """Clear the cache before each test to avoid stale blocked-user data."""
+
     cache.clear()
+
     yield
+
     cache.clear()
-
-
-# ──────────────────────────────────────────────────────────────
-# PostViewSet
-# ──────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -80,7 +77,6 @@ class TestPostViewSetList:
         PostFactory(author=user, text_content="Post 2")
         response = auth_client.get(POSTS_URL)
         assert response.status_code == status.HTTP_200_OK
-        # Cursor pagination wraps in envelope
         data = response.json()
         results = data.get("data", data).get("results", data.get("results", []))
         assert len(results) == 2
@@ -95,23 +91,20 @@ class TestPostViewSetList:
         visible_author = UserFactory()
         PostFactory(author=visible_author)
         BlockRelationshipFactory(blocker=user, blocked=blocked_author)
-
         response = auth_client.get(POSTS_URL)
         data = response.json()
         results = data.get("data", data).get("results", data.get("results", []))
         assert len(results) == 1
 
     def test_list_posts_cursor_pagination(self, auth_client, user):
-        # Create enough posts for pagination
         for i in range(25):
             PostFactory(author=user, text_content=f"Post {i}")
+
         response = auth_client.get(POSTS_URL)
         data = response.json()
         envelope = data.get("data", data)
         results = envelope.get("results", [])
-        # Default page size is 20
         assert len(results) == 20
-        # Should have a next link
         assert envelope.get("next") is not None
 
 
@@ -175,10 +168,8 @@ class TestPostViewSetReact:
 
     def test_react_toggle_off_same_emoji(self, auth_client, user):
         post = PostFactory()
-        # Create
         auth_client.post(f"{POSTS_URL}{post.pk}/react/", {"emoji_type": "heart"})
         assert Reaction.objects.count() == 1
-        # Toggle off
         response = auth_client.post(
             f"{POSTS_URL}{post.pk}/react/", {"emoji_type": "heart"}
         )
@@ -240,7 +231,6 @@ class TestPostViewSetComments:
         response = auth_client.get(f"{POSTS_URL}{post.pk}/comments/")
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
-        # StandardPageNumberPagination wraps in envelope
         results = data.get("data", data).get("results", data.get("results", []))
         assert len(results) == 2
 
@@ -254,9 +244,7 @@ class TestPostViewSetComments:
 
     def test_create_comment_empty_text_fails(self, auth_client):
         post = PostFactory()
-        response = auth_client.post(
-            f"{POSTS_URL}{post.pk}/comments/", {"text": ""}
-        )
+        response = auth_client.post(f"{POSTS_URL}{post.pk}/comments/", {"text": ""})
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_list_comments_excludes_blocked_user_comments(self, auth_client, user):
@@ -271,7 +259,6 @@ class TestPostViewSetComments:
             user=visible_user, content_type=ct, object_id=post.pk, text="Visible"
         )
         BlockRelationshipFactory(blocker=user, blocked=blocked_user)
-
         response = auth_client.get(f"{POSTS_URL}{post.pk}/comments/")
         data = response.json()
         results = data.get("data", data).get("results", data.get("results", []))
@@ -305,11 +292,6 @@ class TestPostViewSetShare:
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
-# ──────────────────────────────────────────────────────────────
-# PrayerViewSet
-# ──────────────────────────────────────────────────────────────
-
-
 @pytest.mark.django_db
 class TestPrayerViewSetCreate:
     """Tests for POST /api/v1/social/prayers/."""
@@ -330,15 +312,11 @@ class TestPrayerViewSetCreate:
         assert response.status_code == status.HTTP_201_CREATED
 
     def test_create_prayer_missing_title(self, auth_client):
-        response = auth_client.post(
-            PRAYERS_URL, {"description": "No title"}
-        )
+        response = auth_client.post(PRAYERS_URL, {"description": "No title"})
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_create_prayer_unauthenticated(self, api_client):
-        response = api_client.post(
-            PRAYERS_URL, {"title": "Test"}
-        )
+        response = api_client.post(PRAYERS_URL, {"title": "Test"})
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_create_prayer_returns_author_info(self, auth_client, user):
@@ -435,9 +413,7 @@ class TestPrayerViewSetReact:
 
     def test_react_toggle_off_prayer(self, auth_client, user):
         prayer = PrayerFactory()
-        auth_client.post(
-            f"{PRAYERS_URL}{prayer.pk}/react/", {"emoji_type": "amen"}
-        )
+        auth_client.post(f"{PRAYERS_URL}{prayer.pk}/react/", {"emoji_type": "amen"})
         response = auth_client.post(
             f"{PRAYERS_URL}{prayer.pk}/react/", {"emoji_type": "amen"}
         )
@@ -446,9 +422,7 @@ class TestPrayerViewSetReact:
 
     def test_react_change_emoji_prayer(self, auth_client, user):
         prayer = PrayerFactory()
-        auth_client.post(
-            f"{PRAYERS_URL}{prayer.pk}/react/", {"emoji_type": "heart"}
-        )
+        auth_client.post(f"{PRAYERS_URL}{prayer.pk}/react/", {"emoji_type": "heart"})
         response = auth_client.post(
             f"{PRAYERS_URL}{prayer.pk}/react/", {"emoji_type": "cross"}
         )
@@ -508,11 +482,6 @@ class TestPrayerViewSetShare:
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
-# ──────────────────────────────────────────────────────────────
-# CommentViewSet
-# ──────────────────────────────────────────────────────────────
-
-
 @pytest.mark.django_db
 class TestCommentViewSetDestroy:
     """Tests for DELETE /api/v1/social/comments/{id}/."""
@@ -565,16 +534,15 @@ class TestCommentViewSetList:
         assert len(results) == 2
 
 
-# ──────────────────────────────────────────────────────────────
-# ReplyViewSet
-# ──────────────────────────────────────────────────────────────
-
-
 def _make_comment(user=None, post=None):
     """Helper to create a comment on a post."""
+
     user = user or UserFactory()
+
     post = post or PostFactory()
+
     ct = ContentType.objects.get_for_model(Post)
+
     return Comment.objects.create(
         user=user, content_type=ct, object_id=post.pk, text="Test comment"
     )
@@ -588,9 +556,7 @@ class TestReplyViewSetList:
         comment = _make_comment()
         Reply.objects.create(user=UserFactory(), comment=comment, text="Reply 1")
         Reply.objects.create(user=UserFactory(), comment=comment, text="Reply 2")
-        response = auth_client.get(
-            f"{COMMENTS_URL}{comment.pk}/replies/"
-        )
+        response = auth_client.get(f"{COMMENTS_URL}{comment.pk}/replies/")
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         results = data.get("data", data).get("results", data.get("results", []))
@@ -605,9 +571,7 @@ class TestReplyViewSetList:
         assert len(results) == 0
 
     def test_list_replies_nonexistent_comment(self, auth_client):
-        response = auth_client.get(
-            f"{COMMENTS_URL}{uuid.uuid4()}/replies/"
-        )
+        response = auth_client.get(f"{COMMENTS_URL}{uuid.uuid4()}/replies/")
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
 
@@ -663,9 +627,7 @@ class TestReplyViewSetDestroy:
     def test_delete_own_reply(self, auth_client, user):
         comment = _make_comment()
         reply = Reply.objects.create(user=user, comment=comment, text="My reply")
-        response = auth_client.delete(
-            f"{COMMENTS_URL}{comment.pk}/replies/{reply.pk}/"
-        )
+        response = auth_client.delete(f"{COMMENTS_URL}{comment.pk}/replies/{reply.pk}/")
         assert response.status_code == status.HTTP_204_NO_CONTENT
         assert not Reply.objects.filter(pk=reply.pk).exists()
 
@@ -673,9 +635,7 @@ class TestReplyViewSetDestroy:
         other = UserFactory()
         comment = _make_comment()
         reply = Reply.objects.create(user=other, comment=comment, text="Other's reply")
-        response = auth_client.delete(
-            f"{COMMENTS_URL}{comment.pk}/replies/{reply.pk}/"
-        )
+        response = auth_client.delete(f"{COMMENTS_URL}{comment.pk}/replies/{reply.pk}/")
         assert response.status_code == status.HTTP_403_FORBIDDEN
 
     def test_delete_nonexistent_reply(self, auth_client):
@@ -684,11 +644,6 @@ class TestReplyViewSetDestroy:
             f"{COMMENTS_URL}{comment.pk}/replies/{uuid.uuid4()}/"
         )
         assert response.status_code == status.HTTP_404_NOT_FOUND
-
-
-# ──────────────────────────────────────────────────────────────
-# ReportCreateView
-# ──────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -849,11 +804,6 @@ class TestReportCreateView:
         assert response.status_code == status.HTTP_201_CREATED
 
 
-# ──────────────────────────────────────────────────────────────
-# ReportListView (admin-only)
-# ──────────────────────────────────────────────────────────────
-
-
 @pytest.mark.django_db
 class TestReportListView:
     """Tests for GET /api/v1/social/reports/pending/."""
@@ -913,7 +863,10 @@ class TestReportListView:
         data = response.json()
         assert len(data["data"]) == 0
 
-    def test_list_pending_reports_contains_reporter_info(self, admin_client, admin_user):
+    def test_list_pending_reports_contains_reporter_info(
+        self, admin_client, admin_user
+    ):
+
         reporter = UserFactory(full_name="Reporter Name")
         post = PostFactory()
         ct = ContentType.objects.get_for_model(Post)
@@ -932,11 +885,6 @@ class TestReportListView:
         assert "created_at" in report_data
 
 
-# ──────────────────────────────────────────────────────────────
-# Cross-cutting: multi-user interaction tests
-# ──────────────────────────────────────────────────────────────
-
-
 @pytest.mark.django_db
 class TestMultiUserInteractions:
     """Tests verifying interactions between multiple authenticated users."""
@@ -944,6 +892,7 @@ class TestMultiUserInteractions:
     def test_user2_can_comment_on_user1_post(
         self, auth_client, auth_client_user2, user, user2
     ):
+
         post = PostFactory(author=user)
         response = auth_client_user2.post(
             f"{POSTS_URL}{post.pk}/comments/", {"text": "Nice!"}
@@ -951,9 +900,7 @@ class TestMultiUserInteractions:
         assert response.status_code == status.HTTP_201_CREATED
         assert Comment.objects.filter(user=user2, object_id=post.pk).count() == 1
 
-    def test_user2_can_react_to_user1_post(
-        self, auth_client_user2, user, user2
-    ):
+    def test_user2_can_react_to_user1_post(self, auth_client_user2, user, user2):
         post = PostFactory(author=user)
         response = auth_client_user2.post(
             f"{POSTS_URL}{post.pk}/react/", {"emoji_type": "heart"}
@@ -969,6 +916,7 @@ class TestMultiUserInteractions:
     def test_user2_can_reply_to_comment_on_user1_post(
         self, auth_client_user2, user, user2
     ):
+
         post = PostFactory(author=user)
         ct = ContentType.objects.get_for_model(Post)
         comment = Comment.objects.create(
@@ -983,6 +931,7 @@ class TestMultiUserInteractions:
     def test_blocked_user_cannot_see_blocker_posts_in_feed(
         self, auth_client_user2, user, user2
     ):
+
         PostFactory(author=user)
         BlockRelationshipFactory(blocker=user, blocked=user2)
         response = auth_client_user2.get(POSTS_URL)
@@ -993,9 +942,157 @@ class TestMultiUserInteractions:
     def test_user_who_blocked_cannot_see_blocked_user_posts(
         self, auth_client, user, user2
     ):
+
         PostFactory(author=user2)
         BlockRelationshipFactory(blocker=user, blocked=user2)
         response = auth_client.get(POSTS_URL)
         data = response.json()
         results = data.get("data", data).get("results", data.get("results", []))
         assert len(results) == 0
+
+
+@pytest.mark.django_db
+class TestBulkPostDetailView:
+    """Tests for BulkPostDetailView.
+
+    The view is registered at ``posts/bulk/`` but because the DRF router's
+    ``posts/<pk>/`` pattern precedes it in URL resolution, the URL is
+    currently shadowed. These tests exercise the view class directly via
+    ``RequestFactory`` to validate its logic (input validation, blocked user
+    filtering, serialization) independent of URL routing.
+    """
+
+    def _post(self, auth_client, data):
+        """Call the view directly using force_authenticate + RequestFactory."""
+        from rest_framework.test import APIRequestFactory
+        from apps.social.views import BulkPostDetailView
+
+        factory = APIRequestFactory()
+        request = factory.post("/posts/bulk/", data, format="json")
+        # Extract user from auth_client's credentials
+        from rest_framework.test import force_authenticate
+
+        # Get user from the fixture (auth_client stores credentials)
+        return request, BulkPostDetailView
+
+    def test_bulk_returns_posts(self, user):
+        from rest_framework.test import APIRequestFactory, force_authenticate
+        from apps.social.views import BulkPostDetailView
+
+        p1 = PostFactory(text_content="Post one")
+        p2 = PostFactory(text_content="Post two")
+        factory = APIRequestFactory()
+        request = factory.post(
+            "/posts/bulk/",
+            {"post_ids": [str(p1.pk), str(p2.pk)]},
+            format="json",
+        )
+        force_authenticate(request, user=user)
+        view = BulkPostDetailView.as_view()
+        response = view(request)
+        response.render()
+        assert response.status_code == status.HTTP_200_OK
+        data = response.data["data"]
+        assert len(data) == 2
+        returned_ids = {item["id"] for item in data}
+        assert str(p1.pk) in returned_ids
+        assert str(p2.pk) in returned_ids
+
+    def test_bulk_filters_blocked_users(self, user):
+        from rest_framework.test import APIRequestFactory, force_authenticate
+        from apps.social.views import BulkPostDetailView
+
+        blocked_author = UserFactory()
+        visible_author = UserFactory()
+        blocked_post = PostFactory(author=blocked_author)
+        visible_post = PostFactory(author=visible_author)
+        BlockRelationshipFactory(blocker=user, blocked=blocked_author)
+        factory = APIRequestFactory()
+        request = factory.post(
+            "/posts/bulk/",
+            {"post_ids": [str(blocked_post.pk), str(visible_post.pk)]},
+            format="json",
+        )
+        force_authenticate(request, user=user)
+        view = BulkPostDetailView.as_view()
+        response = view(request)
+        response.render()
+        assert response.status_code == status.HTTP_200_OK
+        data = response.data["data"]
+        assert len(data) == 1
+        assert data[0]["id"] == str(visible_post.pk)
+
+    def test_bulk_over_50_returns_400(self, user):
+        from rest_framework.test import APIRequestFactory, force_authenticate
+        from apps.social.views import BulkPostDetailView
+
+        ids = [str(uuid.uuid4()) for _ in range(51)]
+        factory = APIRequestFactory()
+        request = factory.post("/posts/bulk/", {"post_ids": ids}, format="json")
+        force_authenticate(request, user=user)
+        view = BulkPostDetailView.as_view()
+        response = view(request)
+        response.render()
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_bulk_empty_list_returns_400(self, user):
+        from rest_framework.test import APIRequestFactory, force_authenticate
+        from apps.social.views import BulkPostDetailView
+
+        factory = APIRequestFactory()
+        request = factory.post("/posts/bulk/", {"post_ids": []}, format="json")
+        force_authenticate(request, user=user)
+        view = BulkPostDetailView.as_view()
+        response = view(request)
+        response.render()
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_bulk_missing_post_ids_returns_400(self, user):
+        from rest_framework.test import APIRequestFactory, force_authenticate
+        from apps.social.views import BulkPostDetailView
+
+        factory = APIRequestFactory()
+        request = factory.post("/posts/bulk/", {}, format="json")
+        force_authenticate(request, user=user)
+        view = BulkPostDetailView.as_view()
+        response = view(request)
+        response.render()
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+    def test_bulk_nonexistent_ids_returns_empty(self, user):
+        from rest_framework.test import APIRequestFactory, force_authenticate
+        from apps.social.views import BulkPostDetailView
+
+        factory = APIRequestFactory()
+        request = factory.post(
+            "/posts/bulk/",
+            {"post_ids": [str(uuid.uuid4()), str(uuid.uuid4())]},
+            format="json",
+        )
+        force_authenticate(request, user=user)
+        view = BulkPostDetailView.as_view()
+        response = view(request)
+        response.render()
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data["data"]) == 0
+
+    def test_bulk_filters_users_who_blocked_requester(self, user):
+        """Posts by users who blocked the requester should be excluded."""
+        from rest_framework.test import APIRequestFactory, force_authenticate
+        from apps.social.views import BulkPostDetailView
+
+        blocker = UserFactory()
+        post = PostFactory(author=blocker)
+        BlockRelationshipFactory(blocker=blocker, blocked=user)
+        factory = APIRequestFactory()
+        request = factory.post(
+            "/posts/bulk/",
+            {"post_ids": [str(post.pk)]},
+            format="json",
+        )
+        force_authenticate(request, user=user)
+        view = BulkPostDetailView.as_view()
+        response = view(request)
+        response.render()
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data["data"]) == 0

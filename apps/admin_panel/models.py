@@ -1,8 +1,6 @@
 from __future__ import annotations
-
 from django.conf import settings
 from django.db import models
-
 from apps.common.models import CreatedAtModel, TimeStampedModel
 
 
@@ -23,6 +21,7 @@ class AdminRole(TimeStampedModel):
         on_delete=models.CASCADE,
         related_name="admin_role",
     )
+
     role = models.CharField(
         max_length=20,
         choices=RoleType.choices,
@@ -57,20 +56,24 @@ class AdminLog(CreatedAtModel):
         on_delete=models.CASCADE,
         related_name="admin_logs",
     )
+
     action = models.CharField(max_length=30, choices=ActionType.choices)
     target_model = models.CharField(
         max_length=100,
         help_text="e.g. 'accounts.User', 'social.Post'",
     )
+
     target_id = models.CharField(
         max_length=255,
         help_text="Primary key of the affected object.",
     )
+
     detail = models.TextField(
         blank=True,
         default="",
         help_text="Human-readable description of what was done.",
     )
+
     metadata = models.JSONField(
         default=dict,
         blank=True,
@@ -105,6 +108,7 @@ class BoostTier(TimeStampedModel):
         max_length=20,
         help_text="Display string e.g. '$5.00'",
     )
+
     is_active = models.BooleanField(default=True, db_index=True)
 
     class Meta:

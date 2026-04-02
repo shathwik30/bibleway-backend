@@ -1,14 +1,11 @@
 from __future__ import annotations
-
 from typing import Any
-
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet
-
 from .pagination import FeedCursorPagination, StandardPageNumberPagination
 
 
@@ -16,11 +13,17 @@ class BaseAPIView(APIView):
     """Base API view with standard permission and response helpers."""
 
     permission_classes = [IsAuthenticated]
+
     pagination_class = StandardPageNumberPagination
 
     def get_serializer_context(self, request: Request) -> dict[str, Any]:
         """Provide a consistent serializer context for APIView-based endpoints."""
-        user = request.user if getattr(request, "user", None) and request.user.is_authenticated else None
+        user = (
+            request.user
+            if getattr(request, "user", None) and request.user.is_authenticated
+            else None
+        )
+
         return {
             "request": request,
             "user": user,
@@ -33,6 +36,7 @@ class BaseAPIView(APIView):
         message: str = "Success",
         status_code: int = status.HTTP_200_OK,
     ) -> Response:
+
         return Response(
             {"message": message, "data": data},
             status=status_code,
@@ -43,6 +47,7 @@ class BaseAPIView(APIView):
         data: Any = None,
         message: str = "Created successfully",
     ) -> Response:
+
         return self.success_response(
             data=data, message=message, status_code=status.HTTP_201_CREATED
         )
@@ -63,9 +68,11 @@ class BaseAPIView(APIView):
 
         if page is not None:
             serializer = serializer_class(page, many=True, context=context)
+
             return paginator.get_paginated_response(serializer.data)
 
         serializer = serializer_class(queryset, many=True, context=context)
+
         return self.success_response(data=serializer.data)
 
 
@@ -73,15 +80,19 @@ class BaseModelViewSet(ModelViewSet):
     """Base viewset with standard pagination and permissions."""
 
     permission_classes = [IsAuthenticated]
+
     pagination_class = StandardPageNumberPagination
 
     def get_serializer_context(self) -> dict[str, Any]:
         context = super().get_serializer_context()
         user = self.request.user
+
         if user and user.is_authenticated:
             context["user"] = user
+
         else:
             context["user"] = None
+
         return context
 
 

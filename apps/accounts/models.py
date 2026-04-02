@@ -1,12 +1,9 @@
 from __future__ import annotations
-
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from django.db import models
 from django.utils import timezone
-
 from apps.common.models import CreatedAtModel, UUIDModel
 from apps.common.validators import validate_bio_length
-
 from .managers import CustomUserManager
 from .validators import calculate_age
 
@@ -28,6 +25,7 @@ class User(AbstractBaseUser, PermissionsMixin, UUIDModel):
         max_length=255,
         help_text="Immutable primary identifier. Cannot be changed after registration.",
     )
+
     full_name = models.CharField(max_length=150)
     date_of_birth = models.DateField()
     gender = models.CharField(max_length=20, choices=Gender.choices)
@@ -36,24 +34,30 @@ class User(AbstractBaseUser, PermissionsMixin, UUIDModel):
         default="en",
         help_text="ISO 639-1 language code (e.g., en, es, fr, pt, hi, ar, sw).",
     )
+
     country = models.CharField(max_length=100)
     phone_number = models.CharField(max_length=20, blank=True, default="")
-
     profile_photo = models.ImageField(
         upload_to=profile_photo_upload_path,
         blank=True,
         default="",
     )
+
     bio = models.CharField(
         max_length=250,
         blank=True,
         default="",
         validators=[validate_bio_length],
     )
+
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     is_email_verified = models.BooleanField(default=False)
     date_joined = models.DateTimeField(default=timezone.now)
+    follower_count = models.PositiveIntegerField(default=0)
+    following_count = models.PositiveIntegerField(default=0)
+    post_count = models.PositiveIntegerField(default=0)
+    prayer_count = models.PositiveIntegerField(default=0)
 
     objects = CustomUserManager()
 
@@ -70,6 +74,7 @@ class User(AbstractBaseUser, PermissionsMixin, UUIDModel):
             models.Index(fields=["date_of_birth"]),
             models.Index(fields=["is_active"]),
             models.Index(fields=["is_email_verified"]),
+            models.Index(fields=["last_login"]),
         ]
 
     def __str__(self) -> str:
@@ -88,6 +93,7 @@ class FollowRelationship(CreatedAtModel):
         on_delete=models.CASCADE,
         related_name="following_relationships",
     )
+
     following = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
@@ -125,6 +131,7 @@ class BlockRelationship(CreatedAtModel):
         on_delete=models.CASCADE,
         related_name="blocking_relationships",
     )
+
     blocked = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
@@ -168,6 +175,7 @@ class OTPToken(CreatedAtModel):
         on_delete=models.CASCADE,
         related_name="otp_tokens",
     )
+
     hashed_code = models.CharField(max_length=128)
     purpose = models.CharField(max_length=20, choices=Purpose.choices)
     expires_at = models.DateTimeField()
@@ -180,6 +188,7 @@ class OTPToken(CreatedAtModel):
         ordering = ["-created_at"]
         indexes = [
             models.Index(fields=["user", "purpose", "used"]),
+            models.Index(fields=["user", "purpose", "used", "-created_at"]),
             models.Index(fields=["expires_at"]),
         ]
 

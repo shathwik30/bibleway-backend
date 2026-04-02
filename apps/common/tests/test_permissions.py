@@ -1,59 +1,64 @@
 """Tests for apps.common.permissions — IsOwner, IsOwnerOrReadOnly, IsAdminUser, IsNotBlocked."""
 
 from __future__ import annotations
-
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 from uuid import uuid4
-
 import pytest
-
-from apps.common.permissions import IsAdminUser, IsNotBlocked, IsOwner, IsOwnerOrReadOnly
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+from apps.common.permissions import (
+    IsAdminUser,
+    IsNotBlocked,
+    IsOwner,
+    IsOwnerOrReadOnly,
+)
 
 
 def _make_request(user_id=None, method="GET", is_staff=False):
     """Build a minimal mock DRF request."""
+
     request = MagicMock()
+
     if user_id is not None:
         request.user.id = user_id
         request.user.is_staff = is_staff
         request.user.__bool__ = lambda self: True
+
     else:
         request.user = None
+
     request.method = method
+
     return request
 
 
 def _make_view(target_user_id=None, has_method=True):
     """Build a minimal mock view for IsNotBlocked tests."""
+
     view = MagicMock()
+
     if has_method:
         view.get_target_user_id = MagicMock(return_value=target_user_id)
+
     else:
         del view.get_target_user_id
+
     return view
 
 
 def _make_obj_with_author(author_id):
     """Object with an 'author' attribute (like Post)."""
+
     obj = SimpleNamespace(author=True, author_id=author_id)
+
     return obj
 
 
 def _make_obj_with_user(user_id):
     """Object with a 'user' attribute (like Bookmark, Purchase)."""
+
     obj = SimpleNamespace(user=True, user_id=user_id)
+
     return obj
-
-
-# ---------------------------------------------------------------------------
-# IsOwner
-# ---------------------------------------------------------------------------
 
 
 class TestIsOwner:
@@ -96,22 +101,19 @@ class TestIsOwner:
         perm = IsOwner()
         request = _make_request(user_id=uid)
         obj = SimpleNamespace(
-            author=True, author_id=uid,
-            user=True, user_id=other,
+            author=True,
+            author_id=uid,
+            user=True,
+            user_id=other,
         )
         assert perm.has_object_permission(request, MagicMock(), obj) is True
-
-
-# ---------------------------------------------------------------------------
-# IsOwnerOrReadOnly
-# ---------------------------------------------------------------------------
 
 
 class TestIsOwnerOrReadOnly:
     def test_get_allowed_for_anyone(self):
         perm = IsOwnerOrReadOnly()
         request = _make_request(user_id=uuid4(), method="GET")
-        obj = _make_obj_with_author(author_id=uuid4())  # different user
+        obj = _make_obj_with_author(author_id=uuid4())
         assert perm.has_object_permission(request, MagicMock(), obj) is True
 
     def test_head_allowed_for_anyone(self):
@@ -152,11 +154,6 @@ class TestIsOwnerOrReadOnly:
         assert perm.has_object_permission(request, MagicMock(), obj) is False
 
 
-# ---------------------------------------------------------------------------
-# IsAdminUser
-# ---------------------------------------------------------------------------
-
-
 class TestIsAdminUser:
     def test_allows_staff(self):
         perm = IsAdminUser()
@@ -172,11 +169,6 @@ class TestIsAdminUser:
         perm = IsAdminUser()
         request = _make_request(user_id=None)
         assert perm.has_permission(request, MagicMock()) is False
-
-
-# ---------------------------------------------------------------------------
-# IsNotBlocked
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db

@@ -4,15 +4,14 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('analytics', '0003_postview_view_type'),
+        ("analytics", "0003_postview_view_type"),
     ]
 
     operations = [
         migrations.RenameIndex(
-            model_name='postview',
-            new_name='analytics_p_content_353541_idx',
-            old_name='analytics_p_content_vt_idx',
+            model_name="postview",
+            new_name="analytics_p_content_353541_idx",
+            old_name="analytics_p_content_vt_idx",
         ),
     ]

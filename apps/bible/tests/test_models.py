@@ -8,12 +8,9 @@ Covers:
 """
 
 from __future__ import annotations
-
-
 import pytest
 from django.contrib.contenttypes.models import ContentType
 from django.db import IntegrityError
-
 from apps.bible.models import (
     Bookmark,
     Highlight,
@@ -27,11 +24,6 @@ from apps.bible.models import (
 )
 
 from conftest import UserFactory
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
@@ -68,11 +60,6 @@ def user(db):
     return UserFactory()
 
 
-# ---------------------------------------------------------------------------
-# SegregatedSection
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.django_db
 class TestSegregatedSection:
     """Tests for the SegregatedSection model."""
@@ -94,10 +81,16 @@ class TestSegregatedSection:
     def test_ordering_by_order(self, db):
         """Sections are ordered by the `order` field."""
         s2 = SegregatedSection.objects.create(
-            title="Teens", age_min=13, age_max=17, order=2,
+            title="Teens",
+            age_min=13,
+            age_max=17,
+            order=2,
         )
         s1 = SegregatedSection.objects.create(
-            title="Kids", age_min=5, age_max=8, order=1,
+            title="Kids",
+            age_min=5,
+            age_max=8,
+            order=1,
         )
         sections = list(SegregatedSection.objects.all())
         assert sections[0].pk == s1.pk
@@ -105,7 +98,7 @@ class TestSegregatedSection:
 
     def test_check_constraint_age_min_lte_age_max(self, db):
         """age_min must be <= age_max (CheckConstraint)."""
-        # SQLite enforces CHECK constraints since 3.25.
+
         with pytest.raises(IntegrityError):
             SegregatedSection.objects.create(
                 title="Invalid",
@@ -122,11 +115,6 @@ class TestSegregatedSection:
         """Section has created_at and updated_at timestamps."""
         assert section.created_at is not None
         assert section.updated_at is not None
-
-
-# ---------------------------------------------------------------------------
-# SegregatedChapter
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
@@ -160,11 +148,6 @@ class TestSegregatedChapter:
         assert chapters[1].pk == ch2.pk
 
 
-# ---------------------------------------------------------------------------
-# SegregatedPage
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.django_db
 class TestSegregatedPage:
     """Tests for the SegregatedPage model."""
@@ -194,19 +177,20 @@ class TestSegregatedPage:
     def test_ordering_by_order(self, chapter):
         """Pages are ordered by the `order` field."""
         p2 = SegregatedPage.objects.create(
-            chapter=chapter, title="P2", content="c2", order=2,
+            chapter=chapter,
+            title="P2",
+            content="c2",
+            order=2,
         )
         p1 = SegregatedPage.objects.create(
-            chapter=chapter, title="P1", content="c1", order=1,
+            chapter=chapter,
+            title="P1",
+            content="c1",
+            order=1,
         )
         pages = list(SegregatedPage.objects.filter(chapter=chapter))
         assert pages[0].pk == p1.pk
         assert pages[1].pk == p2.pk
-
-
-# ---------------------------------------------------------------------------
-# TranslatedPageCache
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
@@ -226,7 +210,9 @@ class TestTranslatedPageCache:
     def test_str(self, page):
         """__str__ includes page title and language code."""
         cache = TranslatedPageCache.objects.create(
-            page=page, language_code="fr", translated_content="Au commencement...",
+            page=page,
+            language_code="fr",
+            translated_content="Au commencement...",
         )
         result = str(cache)
         assert page.title in result
@@ -235,35 +221,41 @@ class TestTranslatedPageCache:
     def test_unique_constraint_page_language(self, page):
         """Only one translation per page per language is allowed."""
         TranslatedPageCache.objects.create(
-            page=page, language_code="es", translated_content="Texto 1",
+            page=page,
+            language_code="es",
+            translated_content="Texto 1",
         )
+
         with pytest.raises(IntegrityError):
             TranslatedPageCache.objects.create(
-                page=page, language_code="es", translated_content="Texto 2",
+                page=page,
+                language_code="es",
+                translated_content="Texto 2",
             )
 
     def test_different_languages_allowed(self, page):
         """Multiple translations of the same page in different languages are allowed."""
         TranslatedPageCache.objects.create(
-            page=page, language_code="es", translated_content="Espanol",
+            page=page,
+            language_code="es",
+            translated_content="Espanol",
         )
         TranslatedPageCache.objects.create(
-            page=page, language_code="fr", translated_content="Francais",
+            page=page,
+            language_code="fr",
+            translated_content="Francais",
         )
         assert TranslatedPageCache.objects.filter(page=page).count() == 2
 
     def test_cascade_delete_page(self, page):
         """Deleting the page cascades to its translation cache entries."""
         TranslatedPageCache.objects.create(
-            page=page, language_code="es", translated_content="text",
+            page=page,
+            language_code="es",
+            translated_content="text",
         )
         page.delete()
         assert TranslatedPageCache.objects.count() == 0
-
-
-# ---------------------------------------------------------------------------
-# Bookmark
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
@@ -322,6 +314,7 @@ class TestBookmark:
             bookmark_type="api_bible",
             verse_reference="JHN.3.16",
         )
+
         with pytest.raises(IntegrityError):
             Bookmark.objects.create(
                 user=user,
@@ -338,6 +331,7 @@ class TestBookmark:
             content_type=ct,
             object_id=page.pk,
         )
+
         with pytest.raises(IntegrityError):
             Bookmark.objects.create(
                 user=user,
@@ -350,22 +344,25 @@ class TestBookmark:
         """Different users can bookmark the same verse."""
         u1 = UserFactory()
         u2 = UserFactory()
-        Bookmark.objects.create(user=u1, bookmark_type="api_bible", verse_reference="JHN.3.16")
-        Bookmark.objects.create(user=u2, bookmark_type="api_bible", verse_reference="JHN.3.16")
+        Bookmark.objects.create(
+            user=u1, bookmark_type="api_bible", verse_reference="JHN.3.16"
+        )
+        Bookmark.objects.create(
+            user=u2, bookmark_type="api_bible", verse_reference="JHN.3.16"
+        )
         assert Bookmark.objects.filter(verse_reference="JHN.3.16").count() == 2
 
     def test_ordering_newest_first(self, user):
         """Bookmarks are ordered by -created_at."""
-        bm1 = Bookmark.objects.create(user=user, bookmark_type="api_bible", verse_reference="A")
-        bm2 = Bookmark.objects.create(user=user, bookmark_type="api_bible", verse_reference="B")
+        bm1 = Bookmark.objects.create(
+            user=user, bookmark_type="api_bible", verse_reference="A"
+        )
+        bm2 = Bookmark.objects.create(
+            user=user, bookmark_type="api_bible", verse_reference="B"
+        )
         bookmarks = list(Bookmark.objects.filter(user=user))
         assert bookmarks[0].pk == bm2.pk
         assert bookmarks[1].pk == bm1.pk
-
-
-# ---------------------------------------------------------------------------
-# Highlight
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
@@ -440,11 +437,6 @@ class TestHighlight:
         assert "pink" in result
 
 
-# ---------------------------------------------------------------------------
-# Note
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.django_db
 class TestNote:
     """Tests for the Note model."""
@@ -511,18 +503,19 @@ class TestNote:
     def test_ordering_newest_first(self, user):
         """Notes are ordered by -created_at."""
         Note.objects.create(
-            user=user, note_type="api_bible", verse_reference="A", text="1",
+            user=user,
+            note_type="api_bible",
+            verse_reference="A",
+            text="1",
         )
         n2 = Note.objects.create(
-            user=user, note_type="api_bible", verse_reference="B", text="2",
+            user=user,
+            note_type="api_bible",
+            verse_reference="B",
+            text="2",
         )
         notes = list(Note.objects.filter(user=user))
         assert notes[0].pk == n2.pk
-
-
-# ---------------------------------------------------------------------------
-# SegregatedPageComment
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
@@ -546,11 +539,6 @@ class TestSegregatedPageComment:
         assert SegregatedPageComment.objects.count() == 0
 
 
-# ---------------------------------------------------------------------------
-# SegregatedPageLike
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.django_db
 class TestSegregatedPageLike:
     """Tests for the SegregatedPageLike model."""
@@ -563,6 +551,7 @@ class TestSegregatedPageLike:
     def test_unique_constraint_user_page(self, user, page):
         """A user can like a page only once."""
         SegregatedPageLike.objects.create(user=user, page=page)
+
         with pytest.raises(IntegrityError):
             SegregatedPageLike.objects.create(user=user, page=page)
 

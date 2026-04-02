@@ -5,17 +5,14 @@ Usage:
     python manage.py seed_segregated /path/to/ABC/
     python manage.py seed_segregated /path/to/ABC/ --clear  # wipe existing data first
 """
-from __future__ import annotations
 
+from __future__ import annotations
 import re
 from pathlib import Path
 from typing import Any
-
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
-
 from apps.bible.models import SegregatedChapter, SegregatedPage, SegregatedSection
-
 
 FILE_TO_SECTION: list[dict[str, Any]] = [
     {
@@ -79,12 +76,15 @@ FILE_TO_SECTION: list[dict[str, Any]] = [
 
 def _clean_heading(text: str) -> str:
     text = re.sub(r"[*_#]+", "", text).strip()
+
     text = re.sub(r"\s+", " ", text)
+
     return text[:255]
 
 
 def _split_into_chapters(content: str) -> list[dict[str, str]]:
     pattern = re.compile(r"^(#{2,3})\s+(.+)$", re.MULTILINE)
+
     matches = list(pattern.finditer(content))
 
     if not matches:
@@ -94,6 +94,7 @@ def _split_into_chapters(content: str) -> list[dict[str, str]]:
 
     if matches[0].start() > 0:
         intro = content[: matches[0].start()].strip()
+
         if intro:
             chapters.append({"title": "Introduction", "content": intro})
 
@@ -102,6 +103,7 @@ def _split_into_chapters(content: str) -> list[dict[str, str]]:
         start = match.end()
         end = matches[i + 1].start() if i + 1 < len(matches) else len(content)
         body = content[start:end].strip()
+
         if title and body:
             chapters.append({"title": title, "content": body})
 
@@ -112,30 +114,45 @@ class Command(BaseCommand):
     help = "Seed segregated Bible sections, chapters, and pages from markdown files."
 
     def add_arguments(self, parser):
-        parser.add_argument("source_dir", type=str, help="Path to the directory containing markdown files.")
-        parser.add_argument("--clear", action="store_true", help="Delete all existing segregated data before seeding.")
+        parser.add_argument(
+            "source_dir",
+            type=str,
+            help="Path to the directory containing markdown files.",
+        )
+        parser.add_argument(
+            "--clear",
+            action="store_true",
+            help="Delete all existing segregated data before seeding.",
+        )
 
     @transaction.atomic
     def handle(self, *args, **options):
         source_dir = Path(options["source_dir"])
+
         if not source_dir.is_dir():
             raise CommandError(f"Directory not found: {source_dir}")
 
         if options["clear"]:
             deleted_sections, _ = SegregatedSection.objects.all().delete()
-            self.stdout.write(self.style.WARNING(f"Cleared {deleted_sections} existing sections (cascade)."))
+            self.stdout.write(
+                self.style.WARNING(
+                    f"Cleared {deleted_sections} existing sections (cascade)."
+                )
+            )
 
         total_chapters = 0
         total_pages = 0
 
         for mapping in FILE_TO_SECTION:
             filepath = source_dir / mapping["filename"]
+
             if not filepath.exists():
-                self.stdout.write(self.style.WARNING(f"Skipping missing file: {mapping['filename']}"))
+                self.stdout.write(
+                    self.style.WARNING(f"Skipping missing file: {mapping['filename']}")
+                )
                 continue
 
             content = filepath.read_text(encoding="utf-8")
-
             section = SegregatedSection.objects.create(
                 title=mapping["title"],
                 age_min=mapping["age_min"],
@@ -143,7 +160,6 @@ class Command(BaseCommand):
                 order=mapping["order"],
                 is_active=True,
             )
-
             chapters_data = _split_into_chapters(content)
 
             for ch_order, ch_data in enumerate(chapters_data):
@@ -153,7 +169,6 @@ class Command(BaseCommand):
                     order=ch_order,
                     is_active=True,
                 )
-
                 SegregatedPage.objects.create(
                     chapter=chapter,
                     title=ch_data["title"],
@@ -161,7 +176,6 @@ class Command(BaseCommand):
                     order=0,
                     is_active=True,
                 )
-
                 total_chapters += 1
                 total_pages += 1
 
@@ -170,7 +184,9 @@ class Command(BaseCommand):
                 f"{len(chapters_data)} chapters"
             )
 
-        self.stdout.write(self.style.SUCCESS(
-            f"\nDone! Created {len(FILE_TO_SECTION)} sections, "
-            f"{total_chapters} chapters, {total_pages} pages."
-        ))
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"\nDone! Created {len(FILE_TO_SECTION)} sections, "
+                f"{total_chapters} chapters, {total_pages} pages."
+            )
+        )

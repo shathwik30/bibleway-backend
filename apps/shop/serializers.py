@@ -1,16 +1,7 @@
 from __future__ import annotations
-
-
 from rest_framework import serializers
-
 from apps.common.serializers import BaseModelSerializer, BaseTimestampedSerializer
-
 from .models import Download, Product, Purchase
-
-
-# ---------------------------------------------------------------------------
-# Product serializers
-# ---------------------------------------------------------------------------
 
 
 class ProductListSerializer(BaseTimestampedSerializer):
@@ -61,12 +52,12 @@ class ProductDetailSerializer(BaseTimestampedSerializer):
 
     def get_download_url(self, obj: Product) -> str | None:
         """Return the download endpoint URL for eligible users.
-
         For both free and paid products, we return the download endpoint URL
         so the client always goes through the proper download flow (which
         records the download event and generates a fresh pre-signed URL).
         """
         request = self.context.get("request")
+
         if request is None or not hasattr(request, "user") or request.user.is_anonymous:
             return None
 
@@ -74,7 +65,6 @@ class ProductDetailSerializer(BaseTimestampedSerializer):
             return None
 
         if obj.is_free:
-            # Point to the download endpoint rather than exposing the raw file URL
             return request.build_absolute_uri(f"/api/v1/shop/downloads/{obj.pk}/")
 
         has_purchased = Purchase.objects.filter(
@@ -82,14 +72,11 @@ class ProductDetailSerializer(BaseTimestampedSerializer):
             product=obj,
             is_validated=True,
         ).exists()
+
         if has_purchased:
             return request.build_absolute_uri(f"/api/v1/shop/downloads/{obj.pk}/")
+
         return None
-
-
-# ---------------------------------------------------------------------------
-# Purchase serializers
-# ---------------------------------------------------------------------------
 
 
 class PurchaseCreateSerializer(serializers.Serializer):
@@ -126,11 +113,6 @@ class PurchaseSerializer(BaseModelSerializer):
             "is_validated",
             "created_at",
         ]
-
-
-# ---------------------------------------------------------------------------
-# Download serializers
-# ---------------------------------------------------------------------------
 
 
 class DownloadSerializer(BaseModelSerializer):

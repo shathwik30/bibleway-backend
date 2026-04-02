@@ -1,15 +1,7 @@
 from __future__ import annotations
-
 from rest_framework import serializers
-
 from apps.common.serializers import BaseModelSerializer
-
 from .models import DevicePushToken, Notification
-
-
-# ---------------------------------------------------------------------------
-# Lightweight sender representation
-# ---------------------------------------------------------------------------
 
 
 class SenderSerializer(serializers.Serializer):
@@ -23,11 +15,6 @@ class SenderSerializer(serializers.Serializer):
     full_name = serializers.CharField(read_only=True)
     profile_photo = serializers.ImageField(read_only=True)
     age = serializers.IntegerField(read_only=True)
-
-
-# ---------------------------------------------------------------------------
-# Notification serializers
-# ---------------------------------------------------------------------------
 
 
 class NotificationSerializer(BaseModelSerializer):
@@ -68,11 +55,6 @@ class NotificationListSerializer(BaseModelSerializer):
         ]
 
 
-# ---------------------------------------------------------------------------
-# Device token serializers
-# ---------------------------------------------------------------------------
-
-
 class DeviceTokenRegisterSerializer(serializers.Serializer):
     """Validates input for registering / updating a device push token."""
 
@@ -84,11 +66,6 @@ class DeviceTokenDeregisterSerializer(serializers.Serializer):
     """Validates input for deactivating a device push token (e.g., on logout)."""
 
     token = serializers.CharField()
-
-
-# ---------------------------------------------------------------------------
-# Mark-read serializers
-# ---------------------------------------------------------------------------
 
 
 class MarkReadSerializer(serializers.Serializer):

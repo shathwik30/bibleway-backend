@@ -1,19 +1,19 @@
 """Tests for apps.social.validators — media constraint validation."""
 
 from __future__ import annotations
-
 from unittest.mock import patch
-
 import pytest
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
-
 from apps.social.validators import validate_media_constraints
 
 
 def _make_file(name: str = "test.jpg", size: int = 1024) -> SimpleUploadedFile:
     """Create a minimal SimpleUploadedFile for testing."""
-    return SimpleUploadedFile(name, b"\x00" * size, content_type="application/octet-stream")
+
+    return SimpleUploadedFile(
+        name, b"\x00" * size, content_type="application/octet-stream"
+    )
 
 
 class TestValidateMediaConstraints:
@@ -24,8 +24,6 @@ class TestValidateMediaConstraints:
         """Matching-length lists with valid images pass validation."""
         files = [_make_file("img1.jpg"), _make_file("img2.jpg")]
         types = ["image", "image"]
-
-        # Should not raise
         validate_media_constraints(files, types)
         assert mock_validate_image.call_count == 2
 
@@ -34,7 +32,6 @@ class TestValidateMediaConstraints:
         """A single video file passes validation."""
         files = [_make_file("video.mp4")]
         types = ["video"]
-
         validate_media_constraints(files, types)
         mock_validate_video.assert_called_once()
 
@@ -75,7 +72,6 @@ class TestValidateMediaConstraints:
         """Exactly 10 images should pass validation."""
         files = [_make_file(f"img{i}.jpg") for i in range(10)]
         types = ["image"] * 10
-
         validate_media_constraints(files, types)
         assert mock_validate_image.call_count == 10
 
@@ -97,11 +93,8 @@ class TestValidateMediaConstraints:
         """validate_image_file and validate_video_file are called for their types."""
         image_file = _make_file("photo.png")
         video_file = _make_file("clip.mp4")
-
-        # Only 1 video allowed without images, so test them separately.
         validate_media_constraints([image_file], ["image"])
         mock_validate_image.assert_called_once_with(image_file)
-
         validate_media_constraints([video_file], ["video"])
         mock_validate_video.assert_called_once_with(video_file)
 
@@ -109,7 +102,6 @@ class TestValidateMediaConstraints:
     def test_image_validator_error_propagates(self, mock_validate_image):
         """A ValidationError from validate_image_file propagates up."""
         mock_validate_image.side_effect = ValidationError("Bad image")
-
         files = [_make_file("bad.jpg")]
         types = ["image"]
 

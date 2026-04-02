@@ -1,17 +1,13 @@
 """Tests for apps.analytics.views — API endpoints for analytics and boosts."""
 
 from __future__ import annotations
-
 import datetime
 import uuid
 from unittest.mock import patch
-
 import pytest
 from django.utils import timezone
 from rest_framework import status
-
 from apps.analytics.models import PostBoost
-
 from conftest import (
     BoostAnalyticSnapshotFactory,
     PostBoostFactory,
@@ -22,24 +18,23 @@ from conftest import (
 
 def _paginated_results(response):
     """Extract results from a paginated envelope response."""
+
     return response.data["data"]["results"]
 
 
 POST_ANALYTICS_URL = "/api/v1/analytics/posts/{post_id}/"
+
 USER_ANALYTICS_URL = "/api/v1/analytics/me/"
+
 BOOST_CREATE_URL = "/api/v1/analytics/boosts/"
+
 BOOST_LIST_URL = "/api/v1/analytics/boosts/list/"
+
 BOOST_ANALYTICS_URL = "/api/v1/analytics/boosts/{boost_id}/analytics/"
-
-
-# ──────────────────────────────────────────────────────────────
-# GET /api/v1/analytics/posts/<post_id>/  (PostAnalyticsView)
-# ──────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
 class TestPostAnalyticsView:
-
     def test_get_post_analytics_as_author(self, auth_client, user):
         post = PostFactory(author=user)
         url = POST_ANALYTICS_URL.format(post_id=post.pk)
@@ -87,11 +82,6 @@ class TestPostAnalyticsView:
         assert "data" in response.data
 
 
-# ──────────────────────────────────────────────────────────────
-# GET /api/v1/analytics/me/  (UserAnalyticsView)
-# ──────────────────────────────────────────────────────────────
-
-
 @pytest.mark.django_db
 class TestUserAnalyticsView:
     url = USER_ANALYTICS_URL
@@ -126,11 +116,6 @@ class TestUserAnalyticsView:
         assert "data" in response.data
 
 
-# ──────────────────────────────────────────────────────────────
-# POST /api/v1/analytics/boosts/  (PostBoostCreateView)
-# ──────────────────────────────────────────────────────────────
-
-
 @pytest.mark.django_db
 class TestPostBoostCreateView:
     url = BOOST_CREATE_URL
@@ -140,15 +125,17 @@ class TestPostBoostCreateView:
         mock_validate.return_value = {"status": 0}
         post = PostFactory(author=user)
         txn_id = f"boost_{uuid.uuid4().hex[:16]}"
-
-        response = auth_client.post(self.url, {
-            "post_id": str(post.pk),
-            "tier": "boost_tier_1",
-            "platform": "ios",
-            "receipt_data": "fake-receipt",
-            "transaction_id": txn_id,
-            "duration_days": 7,
-        })
+        response = auth_client.post(
+            self.url,
+            {
+                "post_id": str(post.pk),
+                "tier": "boost_tier_1",
+                "platform": "ios",
+                "receipt_data": "fake-receipt",
+                "transaction_id": txn_id,
+                "duration_days": 7,
+            },
+        )
         assert response.status_code == status.HTTP_201_CREATED
         data = response.data["data"]
         assert data["is_active"] is True
@@ -160,15 +147,17 @@ class TestPostBoostCreateView:
         mock_validate.return_value = {"purchaseState": 0}
         post = PostFactory(author=user)
         txn_id = f"boost_{uuid.uuid4().hex[:16]}"
-
-        response = auth_client.post(self.url, {
-            "post_id": str(post.pk),
-            "tier": "boost_tier_1",
-            "platform": "android",
-            "receipt_data": "fake-token",
-            "transaction_id": txn_id,
-            "duration_days": 14,
-        })
+        response = auth_client.post(
+            self.url,
+            {
+                "post_id": str(post.pk),
+                "tier": "boost_tier_1",
+                "platform": "android",
+                "receipt_data": "fake-token",
+                "transaction_id": txn_id,
+                "duration_days": 14,
+            },
+        )
         assert response.status_code == status.HTTP_201_CREATED
 
     @patch("apps.analytics.services.validate_apple_receipt")
@@ -176,26 +165,31 @@ class TestPostBoostCreateView:
         mock_validate.return_value = {"status": 0}
         other_user = UserFactory()
         post = PostFactory(author=other_user)
-
-        response = auth_client.post(self.url, {
-            "post_id": str(post.pk),
-            "tier": "boost_tier_1",
-            "platform": "ios",
-            "receipt_data": "fake-receipt",
-            "transaction_id": f"boost_{uuid.uuid4().hex[:16]}",
-            "duration_days": 7,
-        })
+        response = auth_client.post(
+            self.url,
+            {
+                "post_id": str(post.pk),
+                "tier": "boost_tier_1",
+                "platform": "ios",
+                "receipt_data": "fake-receipt",
+                "transaction_id": f"boost_{uuid.uuid4().hex[:16]}",
+                "duration_days": 7,
+            },
+        )
         assert response.status_code == status.HTTP_403_FORBIDDEN
 
     def test_create_boost_nonexistent_post(self, auth_client):
-        response = auth_client.post(self.url, {
-            "post_id": str(uuid.uuid4()),
-            "tier": "boost_tier_1",
-            "platform": "ios",
-            "receipt_data": "fake-receipt",
-            "transaction_id": f"boost_{uuid.uuid4().hex[:16]}",
-            "duration_days": 7,
-        })
+        response = auth_client.post(
+            self.url,
+            {
+                "post_id": str(uuid.uuid4()),
+                "tier": "boost_tier_1",
+                "platform": "ios",
+                "receipt_data": "fake-receipt",
+                "transaction_id": f"boost_{uuid.uuid4().hex[:16]}",
+                "duration_days": 7,
+            },
+        )
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
     @patch("apps.analytics.services.validate_apple_receipt")
@@ -203,25 +197,28 @@ class TestPostBoostCreateView:
         mock_validate.return_value = {"status": 0}
         post = PostFactory(author=user)
         txn_id = f"boost_{uuid.uuid4().hex[:16]}"
-
-        # First boost
-        auth_client.post(self.url, {
-            "post_id": str(post.pk),
-            "tier": "boost_tier_1",
-            "platform": "ios",
-            "receipt_data": "fake-receipt",
-            "transaction_id": txn_id,
-            "duration_days": 7,
-        })
-        # Duplicate
-        response = auth_client.post(self.url, {
-            "post_id": str(post.pk),
-            "tier": "boost_tier_1",
-            "platform": "ios",
-            "receipt_data": "fake-receipt",
-            "transaction_id": txn_id,
-            "duration_days": 7,
-        })
+        auth_client.post(
+            self.url,
+            {
+                "post_id": str(post.pk),
+                "tier": "boost_tier_1",
+                "platform": "ios",
+                "receipt_data": "fake-receipt",
+                "transaction_id": txn_id,
+                "duration_days": 7,
+            },
+        )
+        response = auth_client.post(
+            self.url,
+            {
+                "post_id": str(post.pk),
+                "tier": "boost_tier_1",
+                "platform": "ios",
+                "receipt_data": "fake-receipt",
+                "transaction_id": txn_id,
+                "duration_days": 7,
+            },
+        )
         assert response.status_code == status.HTTP_409_CONFLICT
 
     def test_create_boost_missing_fields(self, auth_client):
@@ -230,41 +227,52 @@ class TestPostBoostCreateView:
 
     def test_create_boost_invalid_platform(self, auth_client, user):
         post = PostFactory(author=user)
-        response = auth_client.post(self.url, {
-            "post_id": str(post.pk),
-            "tier": "boost_tier_1",
-            "platform": "windows",
-            "receipt_data": "fake-receipt",
-            "transaction_id": f"boost_{uuid.uuid4().hex[:16]}",
-            "duration_days": 7,
-        })
+        response = auth_client.post(
+            self.url,
+            {
+                "post_id": str(post.pk),
+                "tier": "boost_tier_1",
+                "platform": "windows",
+                "receipt_data": "fake-receipt",
+                "transaction_id": f"boost_{uuid.uuid4().hex[:16]}",
+                "duration_days": 7,
+            },
+        )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_create_boost_unauthenticated(self, api_client):
-        response = api_client.post(self.url, {
-            "post_id": str(uuid.uuid4()),
-            "tier": "boost_tier_1",
-            "platform": "ios",
-            "receipt_data": "fake-receipt",
-            "transaction_id": "txn_123",
-            "duration_days": 7,
-        })
+        response = api_client.post(
+            self.url,
+            {
+                "post_id": str(uuid.uuid4()),
+                "tier": "boost_tier_1",
+                "platform": "ios",
+                "receipt_data": "fake-receipt",
+                "transaction_id": "txn_123",
+                "duration_days": 7,
+            },
+        )
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     @patch("apps.analytics.services.validate_apple_receipt")
-    def test_create_boost_receipt_validation_failure(self, mock_validate, auth_client, user):
+    def test_create_boost_receipt_validation_failure(
+        self, mock_validate, auth_client, user
+    ):
+
         mock_validate.side_effect = ValueError("Invalid receipt")
         post = PostFactory(author=user)
         txn_id = f"boost_{uuid.uuid4().hex[:16]}"
-
-        response = auth_client.post(self.url, {
-            "post_id": str(post.pk),
-            "tier": "boost_tier_1",
-            "platform": "ios",
-            "receipt_data": "bad-receipt",
-            "transaction_id": txn_id,
-            "duration_days": 7,
-        })
+        response = auth_client.post(
+            self.url,
+            {
+                "post_id": str(post.pk),
+                "tier": "boost_tier_1",
+                "platform": "ios",
+                "receipt_data": "bad-receipt",
+                "transaction_id": txn_id,
+                "duration_days": 7,
+            },
+        )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert response.data["message"] == "Receipt validation failed: Invalid receipt"
         assert not PostBoost.objects.filter(transaction_id=txn_id).exists()
@@ -273,34 +281,34 @@ class TestPostBoostCreateView:
     def test_create_boost_response_envelope(self, mock_validate, auth_client, user):
         mock_validate.return_value = {"status": 0}
         post = PostFactory(author=user)
-
-        response = auth_client.post(self.url, {
-            "post_id": str(post.pk),
-            "tier": "boost_tier_1",
-            "platform": "ios",
-            "receipt_data": "fake-receipt",
-            "transaction_id": f"boost_{uuid.uuid4().hex[:16]}",
-            "duration_days": 7,
-        })
+        response = auth_client.post(
+            self.url,
+            {
+                "post_id": str(post.pk),
+                "tier": "boost_tier_1",
+                "platform": "ios",
+                "receipt_data": "fake-receipt",
+                "transaction_id": f"boost_{uuid.uuid4().hex[:16]}",
+                "duration_days": 7,
+            },
+        )
         assert "message" in response.data
         assert response.data["message"] == "Post boost activated successfully."
 
     def test_create_boost_invalid_duration(self, auth_client, user):
         post = PostFactory(author=user)
-        response = auth_client.post(self.url, {
-            "post_id": str(post.pk),
-            "tier": "boost_tier_1",
-            "platform": "ios",
-            "receipt_data": "fake-receipt",
-            "transaction_id": f"boost_{uuid.uuid4().hex[:16]}",
-            "duration_days": 0,
-        })
+        response = auth_client.post(
+            self.url,
+            {
+                "post_id": str(post.pk),
+                "tier": "boost_tier_1",
+                "platform": "ios",
+                "receipt_data": "fake-receipt",
+                "transaction_id": f"boost_{uuid.uuid4().hex[:16]}",
+                "duration_days": 0,
+            },
+        )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-
-
-# ──────────────────────────────────────────────────────────────
-# GET /api/v1/analytics/boosts/list/  (PostBoostListView)
-# ──────────────────────────────────────────────────────────────
 
 
 @pytest.mark.django_db
@@ -349,21 +357,19 @@ class TestPostBoostListView:
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
 
-# ──────────────────────────────────────────────────────────────
-# GET /api/v1/analytics/boosts/<boost_id>/analytics/  (BoostAnalyticsView)
-# ──────────────────────────────────────────────────────────────
-
-
 @pytest.mark.django_db
 class TestBoostAnalyticsView:
-
     def test_get_boost_analytics(self, auth_client, user):
         post = PostFactory(author=user)
         boost = PostBoostFactory(post=post, user=user, is_active=True)
         today = timezone.now().date()
         yesterday = today - datetime.timedelta(days=1)
-        BoostAnalyticSnapshotFactory(boost=boost, impressions=100, reach=80, snapshot_date=today)
-        BoostAnalyticSnapshotFactory(boost=boost, impressions=150, reach=120, snapshot_date=yesterday)
+        BoostAnalyticSnapshotFactory(
+            boost=boost, impressions=100, reach=80, snapshot_date=today
+        )
+        BoostAnalyticSnapshotFactory(
+            boost=boost, impressions=150, reach=120, snapshot_date=yesterday
+        )
         url = BOOST_ANALYTICS_URL.format(boost_id=boost.pk)
         response = auth_client.get(url)
         assert response.status_code == status.HTTP_200_OK
@@ -406,8 +412,15 @@ class TestBoostAnalyticsView:
         response = auth_client.get(url)
         results = _paginated_results(response)
         snapshot = results[0]
+
         for field in (
-            "id", "boost", "impressions", "reach",
-            "engagement_rate", "link_clicks", "profile_visits", "snapshot_date",
+            "id",
+            "boost",
+            "impressions",
+            "reach",
+            "engagement_rate",
+            "link_clicks",
+            "profile_visits",
+            "snapshot_date",
         ):
             assert field in snapshot

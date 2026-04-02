@@ -1,20 +1,23 @@
 from __future__ import annotations
-
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
-
+from django.db.models import QuerySet
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
+from rest_framework.serializers import BaseSerializer
+from apps.common.pagination import (
+    BoostedFeedCursorPagination,
+    FeedCursorPagination,
+    StandardPageNumberPagination,
+)
 
-from apps.common.pagination import BoostedFeedCursorPagination, FeedCursorPagination, StandardPageNumberPagination
 from apps.common.permissions import IsAdminUser, IsOwnerOrReadOnly
 from apps.common.storage_backends import PublicMediaStorage
 from apps.common.utils import get_blocked_user_ids
 from apps.common.views import BaseAPIView, BaseModelViewSet, FeedViewSet
-
 from .serializers import (
     CommentCreateSerializer,
     CommentSerializer,
@@ -30,6 +33,7 @@ from .serializers import (
     ReplySerializer,
     ReportCreateSerializer,
 )
+
 from .services import (
     CommentService,
     PostService,
@@ -39,10 +43,8 @@ from .services import (
     ReportService,
 )
 
-
-# ---------------------------------------------------------------------------
-# PostViewSet
-# ---------------------------------------------------------------------------
+if TYPE_CHECKING:
+    from .models import Comment, Post, Prayer, Reply
 
 
 class PostViewSet(FeedViewSet):
@@ -58,7 +60,9 @@ class PostViewSet(FeedViewSet):
     """
 
     http_method_names = ["get", "post", "delete", "head", "options"]
+
     permission_classes = [IsAuthenticated, IsOwnerOrReadOnly]
+
     pagination_class = BoostedFeedCursorPagination
 
     def __init__(self, **kwargs: Any) -> None:
@@ -67,52 +71,66 @@ class PostViewSet(FeedViewSet):
         self._reaction_service = ReactionService()
         self._comment_service = CommentService()
 
-    # -- Queryset & serializer resolution ----------------------------------
+    def get_queryset(self) -> QuerySet[Post]:  # type: ignore[override]
 
-    def get_queryset(self):  # type: ignore[override]
         return self._post_service.get_feed(requesting_user=self.request.user)
 
-    def get_serializer_class(self):  # type: ignore[override]
+    def get_serializer_class(self) -> type[BaseSerializer]:  # type: ignore[override]
+
         if self.action == "create":
             return PostCreateSerializer
+
         if self.action == "list":
             return PostListSerializer
+
         if self.action == "react":
             return ReactionCreateSerializer
+
         if self.action in ("comments", "list_comments"):
             return CommentCreateSerializer
-        return PostDetailSerializer
 
-    # -- Standard actions --------------------------------------------------
+        return PostDetailSerializer
 
     def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         author_id = request.query_params.get("author")
+
         if author_id:
             try:
                 author_uuid = UUID(author_id)
+
             except ValueError:
                 return Response(
                     {"message": "Invalid author UUID.", "data": None},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+
             queryset = self._post_service.get_user_posts(
                 user_id=author_uuid,
                 requesting_user=request.user,
             )
+
         else:
             queryset = self.get_queryset()
+
         page = self.paginate_queryset(queryset)
+
         if page is not None:
-            serializer = PostListSerializer(page, many=True, context=self.get_serializer_context())
+            serializer = PostListSerializer(
+                page, many=True, context=self.get_serializer_context()
+            )
+
             return self.get_paginated_response(serializer.data)
-        serializer = PostListSerializer(queryset, many=True, context=self.get_serializer_context())
+
+        serializer = PostListSerializer(
+            queryset, many=True, context=self.get_serializer_context()
+        )
+
         return Response(serializer.data)
 
     def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         serializer = PostCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-
         post = self._post_service.create_post(
             author=request.user,
             text_content=data.get("text_content", ""),
@@ -120,8 +138,8 @@ class PostViewSet(FeedViewSet):
             media_types=data.get("media_types"),
             media_files=data.get("media_files"),
         )
-
         out = PostDetailSerializer(post, context=self.get_serializer_context())
+
         return Response(out.data, status=status.HTTP_201_CREATED)
 
     def retrieve(self, request: Request, *args: Any, **kwargs: Any) -> Response:
@@ -129,27 +147,28 @@ class PostViewSet(FeedViewSet):
             kwargs["pk"], requesting_user=request.user
         )
         serializer = PostDetailSerializer(post, context=self.get_serializer_context())
+
         return Response(serializer.data)
 
     def destroy(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         self._post_service.delete_post(
             post_id=kwargs["pk"], requesting_user=request.user
         )
-        return Response(status=status.HTTP_204_NO_CONTENT)
 
-    # -- Custom actions ----------------------------------------------------
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["post"], url_path="react")
     def react(self, request: Request, pk: UUID | None = None) -> Response:
         """Toggle a reaction on this post."""
-        serializer = ReactionCreateSerializer(data={
-            "emoji_type": request.data.get("emoji_type"),
-            "content_type_model": "post",
-            "object_id": str(pk),
-        })
+        serializer = ReactionCreateSerializer(
+            data={
+                "emoji_type": request.data.get("emoji_type"),
+                "content_type_model": "post",
+                "object_id": str(pk),
+            }
+        )
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-
         reaction = self._reaction_service.toggle_reaction(
             user=request.user,
             content_type_model=data["content_type_model"],
@@ -164,6 +183,7 @@ class PostViewSet(FeedViewSet):
             )
 
         out = ReactionSerializer(reaction)
+
         return Response(
             {"message": "Reaction added.", "data": out.data},
             status=status.HTTP_201_CREATED,
@@ -172,31 +192,34 @@ class PostViewSet(FeedViewSet):
     @action(detail=True, methods=["get", "post"], url_path="comments")
     def comments(self, request: Request, pk: UUID | None = None) -> Response:
         """List or create comments on this post."""
+
         if request.method == "GET":
             qs = self._comment_service.list_comments_for_content(
                 content_type_model="post", object_id=pk
             )
-            # Filter out comments from blocked users.
             blocked_ids = get_blocked_user_ids(request.user.id)
             qs = qs.exclude(user_id__in=blocked_ids)
-
             paginator = StandardPageNumberPagination()
             page_data = paginator.paginate_queryset(qs, request, view=self)
+
             if page_data is not None:
                 serializer = CommentSerializer(page_data, many=True)
+
                 return paginator.get_paginated_response(serializer.data)
+
             serializer = CommentSerializer(qs, many=True)
+
             return Response(serializer.data)
 
-        # POST
-        create_ser = CommentCreateSerializer(data={
-            "text": request.data.get("text"),
-            "content_type_model": "post",
-            "object_id": str(pk),
-        })
+        create_ser = CommentCreateSerializer(
+            data={
+                "text": request.data.get("text"),
+                "content_type_model": "post",
+                "object_id": str(pk),
+            }
+        )
         create_ser.is_valid(raise_exception=True)
         data = create_ser.validated_data
-
         comment = self._comment_service.create_comment(
             user=request.user,
             content_type_model=data["content_type_model"],
@@ -204,18 +227,15 @@ class PostViewSet(FeedViewSet):
             text=data["text"],
         )
         out = CommentSerializer(comment)
+
         return Response(out.data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["get"], url_path="share")
     def share(self, request: Request, pk: UUID | None = None) -> Response:
         """Return deep-link / share data for a post."""
         share_data = self._post_service.share_post(post_id=pk)
+
         return Response(share_data)
-
-
-# ---------------------------------------------------------------------------
-# PrayerViewSet
-# ---------------------------------------------------------------------------
 
 
 class PrayerViewSet(FeedViewSet):
@@ -231,7 +251,9 @@ class PrayerViewSet(FeedViewSet):
     """
 
     http_method_names = ["get", "post", "delete", "head", "options"]
+
     permission_classes = [IsAuthenticated, IsOwnerOrReadOnly]
+
     pagination_class = FeedCursorPagination
 
     def __init__(self, **kwargs: Any) -> None:
@@ -240,50 +262,66 @@ class PrayerViewSet(FeedViewSet):
         self._reaction_service = ReactionService()
         self._comment_service = CommentService()
 
-    def get_queryset(self):  # type: ignore[override]
+    def get_queryset(self) -> QuerySet[Prayer]:  # type: ignore[override]
+
         return self._prayer_service.get_feed(requesting_user=self.request.user)
 
-    def get_serializer_class(self):  # type: ignore[override]
+    def get_serializer_class(self) -> type[BaseSerializer]:  # type: ignore[override]
+
         if self.action == "create":
             return PrayerCreateSerializer
+
         if self.action == "list":
             return PrayerListSerializer
+
         if self.action == "react":
             return ReactionCreateSerializer
+
         if self.action in ("comments", "list_comments"):
             return CommentCreateSerializer
-        return PrayerDetailSerializer
 
-    # -- Standard actions --------------------------------------------------
+        return PrayerDetailSerializer
 
     def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         author_id = request.query_params.get("author")
+
         if author_id:
             try:
                 author_uuid = UUID(author_id)
+
             except ValueError:
                 return Response(
                     {"message": "Invalid author UUID.", "data": None},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
+
             queryset = self._prayer_service.get_user_prayers(
                 user_id=author_uuid,
                 requesting_user=request.user,
             )
+
         else:
             queryset = self.get_queryset()
+
         page = self.paginate_queryset(queryset)
+
         if page is not None:
-            serializer = PrayerListSerializer(page, many=True, context=self.get_serializer_context())
+            serializer = PrayerListSerializer(
+                page, many=True, context=self.get_serializer_context()
+            )
+
             return self.get_paginated_response(serializer.data)
-        serializer = PrayerListSerializer(queryset, many=True, context=self.get_serializer_context())
+
+        serializer = PrayerListSerializer(
+            queryset, many=True, context=self.get_serializer_context()
+        )
+
         return Response(serializer.data)
 
     def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         serializer = PrayerCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-
         prayer = self._prayer_service.create_prayer(
             author=request.user,
             title=data["title"],
@@ -292,36 +330,39 @@ class PrayerViewSet(FeedViewSet):
             media_types=data.get("media_types"),
             media_files=data.get("media_files"),
         )
-
         out = PrayerDetailSerializer(prayer, context=self.get_serializer_context())
+
         return Response(out.data, status=status.HTTP_201_CREATED)
 
     def retrieve(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         prayer = self._prayer_service.get_by_id_for_user(
             kwargs["pk"], requesting_user=request.user
         )
-        serializer = PrayerDetailSerializer(prayer, context=self.get_serializer_context())
+        serializer = PrayerDetailSerializer(
+            prayer, context=self.get_serializer_context()
+        )
+
         return Response(serializer.data)
 
     def destroy(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         self._prayer_service.delete_prayer(
             prayer_id=kwargs["pk"], requesting_user=request.user
         )
-        return Response(status=status.HTTP_204_NO_CONTENT)
 
-    # -- Custom actions ----------------------------------------------------
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["post"], url_path="react")
     def react(self, request: Request, pk: UUID | None = None) -> Response:
         """Toggle a reaction on this prayer."""
-        serializer = ReactionCreateSerializer(data={
-            "emoji_type": request.data.get("emoji_type"),
-            "content_type_model": "prayer",
-            "object_id": str(pk),
-        })
+        serializer = ReactionCreateSerializer(
+            data={
+                "emoji_type": request.data.get("emoji_type"),
+                "content_type_model": "prayer",
+                "object_id": str(pk),
+            }
+        )
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-
         reaction = self._reaction_service.toggle_reaction(
             user=request.user,
             content_type_model=data["content_type_model"],
@@ -336,6 +377,7 @@ class PrayerViewSet(FeedViewSet):
             )
 
         out = ReactionSerializer(reaction)
+
         return Response(
             {"message": "Reaction added.", "data": out.data},
             status=status.HTTP_201_CREATED,
@@ -344,31 +386,34 @@ class PrayerViewSet(FeedViewSet):
     @action(detail=True, methods=["get", "post"], url_path="comments")
     def comments(self, request: Request, pk: UUID | None = None) -> Response:
         """List or create comments on this prayer."""
+
         if request.method == "GET":
             qs = self._comment_service.list_comments_for_content(
                 content_type_model="prayer", object_id=pk
             )
-            # Filter out comments from blocked users.
             blocked_ids = get_blocked_user_ids(request.user.id)
             qs = qs.exclude(user_id__in=blocked_ids)
-
             paginator = StandardPageNumberPagination()
             page_data = paginator.paginate_queryset(qs, request, view=self)
+
             if page_data is not None:
                 serializer = CommentSerializer(page_data, many=True)
+
                 return paginator.get_paginated_response(serializer.data)
+
             serializer = CommentSerializer(qs, many=True)
+
             return Response(serializer.data)
 
-        # POST
-        create_ser = CommentCreateSerializer(data={
-            "text": request.data.get("text"),
-            "content_type_model": "prayer",
-            "object_id": str(pk),
-        })
+        create_ser = CommentCreateSerializer(
+            data={
+                "text": request.data.get("text"),
+                "content_type_model": "prayer",
+                "object_id": str(pk),
+            }
+        )
         create_ser.is_valid(raise_exception=True)
         data = create_ser.validated_data
-
         comment = self._comment_service.create_comment(
             user=request.user,
             content_type_model=data["content_type_model"],
@@ -376,18 +421,15 @@ class PrayerViewSet(FeedViewSet):
             text=data["text"],
         )
         out = CommentSerializer(comment)
+
         return Response(out.data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["get"], url_path="share")
     def share(self, request: Request, pk: UUID | None = None) -> Response:
         """Return deep-link / share data for a prayer."""
         share_data = self._prayer_service.share_prayer(prayer_id=pk)
+
         return Response(share_data)
-
-
-# ---------------------------------------------------------------------------
-# CommentViewSet
-# ---------------------------------------------------------------------------
 
 
 class CommentViewSet(BaseModelViewSet):
@@ -398,33 +440,39 @@ class CommentViewSet(BaseModelViewSet):
     """
 
     http_method_names = ["get", "post", "delete", "head", "options"]
+
     permission_classes = [IsAuthenticated, IsOwnerOrReadOnly]
+
     pagination_class = StandardPageNumberPagination
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._comment_service = CommentService()
 
-    def get_queryset(self):  # type: ignore[override]
+    def get_queryset(self) -> QuerySet[Comment]:  # type: ignore[override]
+
         content_type_model = self.request.query_params.get("content_type_model", "post")
         object_id = self.request.query_params.get("object_id")
+
         if object_id:
             return self._comment_service.list_comments_for_content(
                 content_type_model=content_type_model,
                 object_id=UUID(object_id),
             )
+
         return self._comment_service.get_queryset()
 
-    def get_serializer_class(self):  # type: ignore[override]
+    def get_serializer_class(self) -> type[BaseSerializer]:  # type: ignore[override]
+
         if self.action == "create":
             return CommentCreateSerializer
+
         return CommentSerializer
 
     def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         serializer = CommentCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-
         comment = self._comment_service.create_comment(
             user=request.user,
             content_type_model=data["content_type_model"],
@@ -432,18 +480,15 @@ class CommentViewSet(BaseModelViewSet):
             text=data["text"],
         )
         out = CommentSerializer(comment)
+
         return Response(out.data, status=status.HTTP_201_CREATED)
 
     def destroy(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         self._comment_service.delete_comment(
             comment_id=kwargs["pk"], requesting_user=request.user
         )
+
         return Response(status=status.HTTP_204_NO_CONTENT)
-
-
-# ---------------------------------------------------------------------------
-# ReplyViewSet
-# ---------------------------------------------------------------------------
 
 
 class ReplyViewSet(BaseModelViewSet):
@@ -455,29 +500,34 @@ class ReplyViewSet(BaseModelViewSet):
     """
 
     permission_classes = [IsAuthenticated, IsOwnerOrReadOnly]
+
     pagination_class = StandardPageNumberPagination
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._reply_service = ReplyService()
 
-    def get_queryset(self):  # type: ignore[override]
+    def get_queryset(self) -> QuerySet[Reply]:  # type: ignore[override]
+
         comment_pk = self.kwargs.get("comment_pk")
+
         if comment_pk:
             return self._reply_service.list_replies_for_comment(
                 comment_id=UUID(str(comment_pk))
             )
+
         return self._reply_service.get_queryset()
 
-    def get_serializer_class(self):  # type: ignore[override]
+    def get_serializer_class(self) -> type[BaseSerializer]:  # type: ignore[override]
+
         if self.action == "create":
             return ReplyCreateSerializer
+
         return ReplySerializer
 
     def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         serializer = ReplyCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
         comment_pk = self.kwargs["comment_pk"]
         reply = self._reply_service.create_reply(
             user=request.user,
@@ -485,18 +535,15 @@ class ReplyViewSet(BaseModelViewSet):
             text=serializer.validated_data["text"],
         )
         out = ReplySerializer(reply)
+
         return Response(out.data, status=status.HTTP_201_CREATED)
 
     def destroy(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         self._reply_service.delete_reply(
             reply_id=kwargs["pk"], requesting_user=request.user
         )
+
         return Response(status=status.HTTP_204_NO_CONTENT)
-
-
-# ---------------------------------------------------------------------------
-# ReportCreateView
-# ---------------------------------------------------------------------------
 
 
 class ReportCreateView(BaseAPIView):
@@ -512,7 +559,6 @@ class ReportCreateView(BaseAPIView):
         serializer = ReportCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-
         report = self._report_service.create_report(
             reporter=request.user,
             content_type_model=data["content_type_model"],
@@ -529,11 +575,6 @@ class ReportCreateView(BaseAPIView):
             },
             message="Report submitted successfully.",
         )
-
-
-# ---------------------------------------------------------------------------
-# ReportListView (admin-only)
-# ---------------------------------------------------------------------------
 
 
 class ReportListView(BaseAPIView):
@@ -565,12 +606,45 @@ class ReportListView(BaseAPIView):
             }
             for r in reports
         ]
+
         return self.success_response(data=data)
 
 
-# ---------------------------------------------------------------------------
-# MediaUploadView
-# ---------------------------------------------------------------------------
+class BulkPostDetailView(BaseAPIView):
+    """POST /posts/bulk/ -- fetch multiple posts in a single request.
+
+    Body: {"post_ids": ["uuid1", "uuid2", ...]}
+    Max 50 IDs per request.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._post_service = PostService()
+
+    def post(self, request: Request) -> Response:
+        from apps.common.exceptions import BadRequestError
+
+        post_ids = request.data.get("post_ids", [])
+
+        if not post_ids or not isinstance(post_ids, list):
+            raise BadRequestError(detail="Provide a list of post_ids.")
+
+        if len(post_ids) > 50:
+            raise BadRequestError(detail="Maximum 50 post_ids per request.")
+
+        blocked_ids = get_blocked_user_ids(request.user.id)
+        posts = (
+            self._post_service.get_queryset()
+            .filter(pk__in=post_ids)
+            .exclude(author_id__in=blocked_ids)
+        )
+        serializer = PostDetailSerializer(
+            posts, many=True, context={"request": request}
+        )
+
+        return self.success_response(data=serializer.data)
 
 
 class MediaUploadView(BaseAPIView):
@@ -584,11 +658,13 @@ class MediaUploadView(BaseAPIView):
 
     def post(self, request: Request) -> Response:
         files = request.FILES.getlist("files")
+
         if not files:
             return Response(
                 {"message": "No files provided.", "data": None},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
         if len(files) > 10:
             return Response(
                 {"message": "Maximum 10 files per upload.", "data": None},
@@ -597,11 +673,14 @@ class MediaUploadView(BaseAPIView):
 
         storage = PublicMediaStorage()
         results = []
+
         for f in files:
             saved_key = storage.save(f"uploads/{request.user.id}/{f.name}", f)
-            results.append({
-                "key": saved_key,
-                "url": storage.url(saved_key),
-            })
+            results.append(
+                {
+                    "key": saved_key,
+                    "url": storage.url(saved_key),
+                }
+            )
 
         return self.success_response(data=results)

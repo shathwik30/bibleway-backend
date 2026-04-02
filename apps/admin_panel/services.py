@@ -1,9 +1,7 @@
 from __future__ import annotations
-
 import datetime
 from typing import Any
 from uuid import UUID
-
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django.db.models import (
@@ -14,9 +12,9 @@ from django.db.models import (
     QuerySet,
     Sum,
 )
+
 from django.db.models.functions import TruncDate
 from django.utils import timezone
-
 from apps.accounts.models import FollowRelationship, User
 from apps.admin_panel.models import AdminLog, AdminRole, BoostTier
 from apps.analytics.models import BoostAnalyticSnapshot, PostBoost, PostView
@@ -27,33 +25,29 @@ from apps.bible.models import (
     SegregatedSection,
     TranslatedPageCache,
 )
+
 from apps.notifications.models import Notification
 from apps.shop.models import Download, Product, Purchase
 from apps.social.models import Comment, Post, Prayer, Report
 from apps.verse_of_day.models import VerseFallbackPool, VerseOfDay
 
-
-# Fields that are not actual model fields and should be excluded from
-# the kwargs loop in update_* methods.
 _NON_MODEL_FIELDS = frozenset({"admin_user"})
 
 
 def _clean_update_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
     """Remove non-model fields from kwargs before applying to a model instance."""
+
     return {k: v for k, v in kwargs.items() if k not in _NON_MODEL_FIELDS}
 
 
 def _subtract_years(d: datetime.date, years: int) -> datetime.date:
     """Subtract *years* from *d*, handling Feb 29 → Feb 28 gracefully."""
+
     try:
         return d.replace(year=d.year - years)
+
     except ValueError:
         return d.replace(year=d.year - years, month=2, day=28)
-
-
-# ---------------------------------------------------------------------------
-# 1. AdminLogService
-# ---------------------------------------------------------------------------
 
 
 class AdminLogService:
@@ -69,6 +63,7 @@ class AdminLogService:
         metadata: dict[str, Any] | None = None,
     ) -> AdminLog:
         """Create an ``AdminLog`` entry for an admin write action."""
+
         return AdminLog.objects.create(
             admin_user=admin_user,
             action=action,
@@ -86,26 +81,25 @@ class AdminLogService:
     ) -> QuerySet[AdminLog]:
         """Return a filtered queryset of admin log entries."""
         qs: QuerySet[AdminLog] = AdminLog.objects.select_related("admin_user")
+
         if admin_user_id is not None:
             qs = qs.filter(admin_user_id=admin_user_id)
+
         if action is not None:
             qs = qs.filter(action=action)
+
         if target_model is not None:
             qs = qs.filter(target_model=target_model)
+
         return qs
 
     @staticmethod
     def get_recent_logs(limit: int = 50) -> QuerySet[AdminLog]:
         """Return the *limit* most-recent admin log entries."""
-        return (
-            AdminLog.objects.select_related("admin_user")
-            .order_by("-created_at")[:limit]
-        )
 
-
-# ---------------------------------------------------------------------------
-# 2. AdminDashboardService
-# ---------------------------------------------------------------------------
+        return AdminLog.objects.select_related("admin_user").order_by("-created_at")[
+            :limit
+        ]
 
 
 class AdminDashboardService:
@@ -141,7 +135,6 @@ class AdminDashboardService:
     @staticmethod
     def get_user_growth_data(days: int = 30) -> list[dict[str, Any]]:
         """Return daily new-signup counts for the last *days* days.
-
         Returns a list of ``{"date": <date>, "count": <int>}`` dicts suitable
         for charting.
         """
@@ -153,21 +146,18 @@ class AdminDashboardService:
             .annotate(count=Count("id"))
             .order_by("date")
         )
+
         return [{"date": row["date"], "count": row["count"]} for row in rows]
 
     @staticmethod
     def get_content_stats() -> dict[str, int]:
         """Return total counts for posts, prayers, and comments."""
+
         return {
             "posts": Post.objects.count(),
             "prayers": Prayer.objects.count(),
             "comments": Comment.objects.count(),
         }
-
-
-# ---------------------------------------------------------------------------
-# 3. AdminUserService
-# ---------------------------------------------------------------------------
 
 
 class AdminUserService:
@@ -182,20 +172,25 @@ class AdminUserService:
     ) -> QuerySet[User]:
         """Return a filtered, ordered queryset of users."""
         qs: QuerySet[User] = User.objects.all()
+
         if search:
             qs = qs.filter(
                 Q(email__icontains=search) | Q(full_name__icontains=search),
             )
+
         if country is not None:
             qs = qs.filter(country=country)
+
         if is_active is not None:
             qs = qs.filter(is_active=is_active)
+
         return qs.order_by(ordering)
 
     @staticmethod
     def get_user_detail(user_id: UUID) -> dict[str, Any]:
         """Return a user together with aggregated relationship counts."""
         user: User = User.objects.get(pk=user_id)
+
         return {
             "user": user,
             "posts_count": Post.objects.filter(author=user).count(),
@@ -219,7 +214,6 @@ class AdminUserService:
         user: User = User.objects.select_for_update().get(pk=user_id)
         user.is_active = False
         user.save(update_fields=["is_active"])
-
         AdminLogService.log_action(
             admin_user=admin_user,
             action=AdminLog.ActionType.SUSPEND,
@@ -227,6 +221,7 @@ class AdminUserService:
             target_id=user_id,
             detail=reason,
         )
+
         return user
 
     @staticmethod
@@ -236,7 +231,6 @@ class AdminUserService:
         user: User = User.objects.select_for_update().get(pk=user_id)
         user.is_active = True
         user.save(update_fields=["is_active"])
-
         AdminLogService.log_action(
             admin_user=admin_user,
             action=AdminLog.ActionType.UNSUSPEND,
@@ -244,6 +238,7 @@ class AdminUserService:
             target_id=user_id,
             detail=f"User {user.email} unsuspended.",
         )
+
         return user
 
     @staticmethod
@@ -268,7 +263,6 @@ class AdminUserService:
             country="",
         )
         AdminRole.objects.create(user=new_user, role=role)
-
         AdminLogService.log_action(
             admin_user=admin_user,
             action=AdminLog.ActionType.CREATE,
@@ -277,6 +271,7 @@ class AdminUserService:
             detail=f"Admin user created: {email} with role {role}.",
             metadata={"role": role},
         )
+
         return new_user
 
     @staticmethod
@@ -293,7 +288,6 @@ class AdminUserService:
         old_role: str = admin_role.role
         admin_role.role = new_role
         admin_role.save(update_fields=["role"])
-
         AdminLogService.log_action(
             admin_user=admin_user,
             action=AdminLog.ActionType.ROLE_CHANGE,
@@ -302,11 +296,13 @@ class AdminUserService:
             detail=f"Role changed from {old_role} to {new_role}.",
             metadata={"old_role": old_role, "new_role": new_role},
         )
+
         return admin_role
 
     @staticmethod
     def list_admin_users() -> QuerySet[User]:
         """Return all staff users with their admin roles eagerly loaded."""
+
         return User.objects.filter(is_staff=True).select_related("admin_role")
 
     @staticmethod
@@ -319,7 +315,6 @@ class AdminUserService:
         AdminRole.objects.filter(user=target_user).delete()
         target_user.is_staff = False
         target_user.save(update_fields=["is_staff"])
-
         AdminLogService.log_action(
             admin_user=admin_user,
             action=AdminLog.ActionType.DELETE,
@@ -327,11 +322,6 @@ class AdminUserService:
             target_id=target_user_id,
             detail=f"Admin privileges removed from {target_user.email}.",
         )
-
-
-# ---------------------------------------------------------------------------
-# 4. AdminModerationService
-# ---------------------------------------------------------------------------
 
 
 class AdminModerationService:
@@ -343,7 +333,6 @@ class AdminModerationService:
         content_type: str | None = None,
     ) -> QuerySet[Report]:
         """Return a filtered queryset of reports.
-
         ``content_type`` accepts a model name string such as ``"post"`` or
         ``"prayer"``.
         """
@@ -352,16 +341,20 @@ class AdminModerationService:
             "reviewed_by",
             "content_type",
         )
+
         if status is not None:
             qs = qs.filter(status=status)
+
         if content_type is not None:
             ct = ContentType.objects.get(model=content_type)
             qs = qs.filter(content_type=ct)
+
         return qs
 
     @staticmethod
     def get_report_detail(report_id: UUID) -> Report:
         """Return a single report with all related objects."""
+
         return Report.objects.select_related(
             "reporter",
             "reviewed_by",
@@ -377,7 +370,6 @@ class AdminModerationService:
         report.reviewed_by = admin_user
         report.reviewed_at = timezone.now()
         report.save(update_fields=["status", "reviewed_by", "reviewed_at"])
-
         AdminLogService.log_action(
             admin_user=admin_user,
             action=AdminLog.ActionType.DISMISS_REPORT,
@@ -385,6 +377,7 @@ class AdminModerationService:
             target_id=report_id,
             detail=f"Report {report_id} dismissed.",
         )
+
         return report
 
     @staticmethod
@@ -393,7 +386,6 @@ class AdminModerationService:
         """Delete the reported content object and mark the report reviewed."""
         report: Report = Report.objects.select_for_update().get(pk=report_id)
         content_object = report.content_object
-
         target_model_label: str = (
             f"{report.content_type.app_label}.{report.content_type.model}"
         )
@@ -406,7 +398,6 @@ class AdminModerationService:
         report.reviewed_by = admin_user
         report.reviewed_at = timezone.now()
         report.save(update_fields=["status", "reviewed_by", "reviewed_at"])
-
         AdminLogService.log_action(
             admin_user=admin_user,
             action=AdminLog.ActionType.REMOVE_CONTENT,
@@ -414,6 +405,7 @@ class AdminModerationService:
             target_id=target_id,
             detail=f"Content removed via report {report_id}.",
         )
+
         return report
 
     @staticmethod
@@ -427,13 +419,13 @@ class AdminModerationService:
         report: Report = Report.objects.select_for_update().get(pk=report_id)
         content_object = report.content_object
 
-        # Determine the user who owns the reported content.
         if hasattr(content_object, "author"):
             reported_user: User = content_object.author
+
         elif hasattr(content_object, "user"):
             reported_user = content_object.user
+
         else:
-            # The content_object is a User themselves.
             reported_user = content_object
 
         Notification.objects.create(
@@ -444,12 +436,10 @@ class AdminModerationService:
             body=warning_message,
             data={"report_id": str(report_id)},
         )
-
         report.status = Report.Status.REVIEWED
         report.reviewed_by = admin_user
         report.reviewed_at = timezone.now()
         report.save(update_fields=["status", "reviewed_by", "reviewed_at"])
-
         AdminLogService.log_action(
             admin_user=admin_user,
             action=AdminLog.ActionType.WARN,
@@ -458,6 +448,7 @@ class AdminModerationService:
             detail=f"Warning issued via report {report_id}: {warning_message}",
             metadata={"report_id": str(report_id)},
         )
+
         return report
 
     @staticmethod
@@ -469,8 +460,10 @@ class AdminModerationService:
 
         if hasattr(content_object, "author"):
             reported_user: User = content_object.author
+
         elif hasattr(content_object, "user"):
             reported_user = content_object.user
+
         else:
             reported_user = content_object
 
@@ -479,40 +472,36 @@ class AdminModerationService:
             user_id=reported_user.pk,
             reason=f"Suspended via report {report_id}.",
         )
-
         report.status = Report.Status.REVIEWED
         report.reviewed_by = admin_user
         report.reviewed_at = timezone.now()
         report.save(update_fields=["status", "reviewed_by", "reviewed_at"])
+
         return report
 
     @staticmethod
     def get_reports_for_user(user_id: UUID) -> QuerySet[Report]:
         """Return all reports where the given user is the *reported* party.
-
         This looks up reports whose generic-FK points at content authored by
         the user, as well as reports that point directly at the user object.
         """
         user_ct = ContentType.objects.get_for_model(User)
-
-        # Reports pointing directly at the user object.
         direct_q = Q(content_type=user_ct, object_id=user_id)
-
-        # Reports on the user's posts, prayers, and comments.
         post_ids = Post.objects.filter(author_id=user_id).values_list(
-            "id", flat=True,
+            "id",
+            flat=True,
         )
         prayer_ids = Prayer.objects.filter(author_id=user_id).values_list(
-            "id", flat=True,
+            "id",
+            flat=True,
         )
         comment_ids = Comment.objects.filter(user_id=user_id).values_list(
-            "id", flat=True,
+            "id",
+            flat=True,
         )
-
         post_ct = ContentType.objects.get_for_model(Post)
         prayer_ct = ContentType.objects.get_for_model(Prayer)
         comment_ct = ContentType.objects.get_for_model(Comment)
-
         content_q = (
             Q(content_type=post_ct, object_id__in=post_ids)
             | Q(content_type=prayer_ct, object_id__in=prayer_ids)
@@ -526,11 +515,6 @@ class AdminModerationService:
         )
 
 
-# ---------------------------------------------------------------------------
-# 5. AdminVerseService
-# ---------------------------------------------------------------------------
-
-
 class AdminVerseService:
     """Verse of the Day and fallback pool management."""
 
@@ -538,8 +522,10 @@ class AdminVerseService:
     def list_verses(scheduled_only: bool = False) -> QuerySet[VerseOfDay]:
         """Return all verses, optionally filtering to future-scheduled ones."""
         qs: QuerySet[VerseOfDay] = VerseOfDay.objects.all()
+
         if scheduled_only:
             qs = qs.filter(display_date__gte=timezone.now().date())
+
         return qs
 
     @staticmethod
@@ -565,6 +551,7 @@ class AdminVerseService:
             target_id=verse.pk,
             detail=f"Verse created: {bible_reference} for {display_date}.",
         )
+
         return verse
 
     @staticmethod
@@ -580,12 +567,15 @@ class AdminVerseService:
             pk=verse_id,
         )
         changed_fields: list[str] = []
+
         for field, value in clean_kwargs.items():
             setattr(verse, field, value)
             changed_fields.append(field)
+
         if changed_fields:
             if "updated_at" not in changed_fields and hasattr(verse, "updated_at"):
                 changed_fields.append("updated_at")
+
             verse.save(update_fields=changed_fields)
 
         AdminLogService.log_action(
@@ -596,6 +586,7 @@ class AdminVerseService:
             detail=f"Updated fields: {', '.join(changed_fields)}.",
             metadata={"changed_fields": changed_fields},
         )
+
         return verse
 
     @staticmethod
@@ -605,7 +596,6 @@ class AdminVerseService:
         verse: VerseOfDay = VerseOfDay.objects.get(pk=verse_id)
         reference: str = verse.bible_reference
         verse.delete()
-
         AdminLogService.log_action(
             admin_user=admin_user,
             action=AdminLog.ActionType.DELETE,
@@ -614,11 +604,10 @@ class AdminVerseService:
             detail=f"Verse deleted: {reference}.",
         )
 
-    # -- Fallback pool -------------------------------------------------------
-
     @staticmethod
     def list_fallback_pool() -> QuerySet[VerseFallbackPool]:
         """Return all entries in the fallback pool."""
+
         return VerseFallbackPool.objects.all()
 
     @staticmethod
@@ -642,6 +631,7 @@ class AdminVerseService:
             target_id=verse.pk,
             detail=f"Fallback verse created: {bible_reference}.",
         )
+
         return verse
 
     @staticmethod
@@ -653,16 +643,19 @@ class AdminVerseService:
     ) -> VerseFallbackPool:
         """Update an existing fallback verse and log the action."""
         clean_kwargs = _clean_update_kwargs(kwargs)
-        verse: VerseFallbackPool = (
-            VerseFallbackPool.objects.select_for_update().get(pk=verse_id)
+        verse: VerseFallbackPool = VerseFallbackPool.objects.select_for_update().get(
+            pk=verse_id
         )
         changed_fields: list[str] = []
+
         for field, value in clean_kwargs.items():
             setattr(verse, field, value)
             changed_fields.append(field)
+
         if changed_fields:
             if "updated_at" not in changed_fields and hasattr(verse, "updated_at"):
                 changed_fields.append("updated_at")
+
             verse.save(update_fields=changed_fields)
 
         AdminLogService.log_action(
@@ -673,6 +666,7 @@ class AdminVerseService:
             detail=f"Updated fields: {', '.join(changed_fields)}.",
             metadata={"changed_fields": changed_fields},
         )
+
         return verse
 
     @staticmethod
@@ -682,7 +676,6 @@ class AdminVerseService:
         verse: VerseFallbackPool = VerseFallbackPool.objects.get(pk=verse_id)
         reference: str = verse.bible_reference
         verse.delete()
-
         AdminLogService.log_action(
             admin_user=admin_user,
             action=AdminLog.ActionType.DELETE,
@@ -698,7 +691,6 @@ class AdminVerseService:
         verses_data: list[dict[str, Any]],
     ) -> list[VerseOfDay]:
         """Bulk-create Verse of the Day entries and log the action.
-
         Each dict in *verses_data* must contain ``bible_reference``,
         ``verse_text``, and ``display_date``.  ``background_image`` is
         optional.
@@ -713,7 +705,6 @@ class AdminVerseService:
             for v in verses_data
         ]
         created: list[VerseOfDay] = VerseOfDay.objects.bulk_create(instances)
-
         AdminLogService.log_action(
             admin_user=admin_user,
             action=AdminLog.ActionType.CREATE,
@@ -725,22 +716,17 @@ class AdminVerseService:
                 "ids": [str(v.pk) for v in created],
             },
         )
+
         return created
-
-
-# ---------------------------------------------------------------------------
-# 6. AdminBibleService
-# ---------------------------------------------------------------------------
 
 
 class AdminBibleService:
     """Segregated Bible content management (sections / chapters / pages)."""
 
-    # -- Sections -------------------------------------------------------------
-
     @staticmethod
     def list_sections() -> QuerySet[SegregatedSection]:
         """Return all segregated sections ordered by *order*."""
+
         return SegregatedSection.objects.all()
 
     @staticmethod
@@ -766,6 +752,7 @@ class AdminBibleService:
             target_id=section.pk,
             detail=f"Section created: {title} (Ages {age_min}-{age_max}).",
         )
+
         return section
 
     @staticmethod
@@ -777,16 +764,19 @@ class AdminBibleService:
     ) -> SegregatedSection:
         """Update a segregated section and log the action."""
         clean_kwargs = _clean_update_kwargs(kwargs)
-        section: SegregatedSection = (
-            SegregatedSection.objects.select_for_update().get(pk=section_id)
+        section: SegregatedSection = SegregatedSection.objects.select_for_update().get(
+            pk=section_id
         )
         changed_fields: list[str] = []
+
         for field, value in clean_kwargs.items():
             setattr(section, field, value)
             changed_fields.append(field)
+
         if changed_fields:
             if "updated_at" not in changed_fields and hasattr(section, "updated_at"):
                 changed_fields.append("updated_at")
+
             section.save(update_fields=changed_fields)
 
         AdminLogService.log_action(
@@ -797,6 +787,7 @@ class AdminBibleService:
             detail=f"Updated fields: {', '.join(changed_fields)}.",
             metadata={"changed_fields": changed_fields},
         )
+
         return section
 
     @staticmethod
@@ -808,7 +799,6 @@ class AdminBibleService:
         )
         title: str = section.title
         section.delete()
-
         AdminLogService.log_action(
             admin_user=admin_user,
             action=AdminLog.ActionType.DELETE,
@@ -817,11 +807,10 @@ class AdminBibleService:
             detail=f"Section deleted: {title} (cascade).",
         )
 
-    # -- Chapters -------------------------------------------------------------
-
     @staticmethod
     def list_chapters(section_id: UUID) -> QuerySet[SegregatedChapter]:
         """Return all chapters for a given section."""
+
         return SegregatedChapter.objects.filter(section_id=section_id)
 
     @staticmethod
@@ -845,6 +834,7 @@ class AdminBibleService:
             target_id=chapter.pk,
             detail=f"Chapter created: {title} in section {section_id}.",
         )
+
         return chapter
 
     @staticmethod
@@ -856,16 +846,19 @@ class AdminBibleService:
     ) -> SegregatedChapter:
         """Update a chapter and log the action."""
         clean_kwargs = _clean_update_kwargs(kwargs)
-        chapter: SegregatedChapter = (
-            SegregatedChapter.objects.select_for_update().get(pk=chapter_id)
+        chapter: SegregatedChapter = SegregatedChapter.objects.select_for_update().get(
+            pk=chapter_id
         )
         changed_fields: list[str] = []
+
         for field, value in clean_kwargs.items():
             setattr(chapter, field, value)
             changed_fields.append(field)
+
         if changed_fields:
             if "updated_at" not in changed_fields and hasattr(chapter, "updated_at"):
                 changed_fields.append("updated_at")
+
             chapter.save(update_fields=changed_fields)
 
         AdminLogService.log_action(
@@ -876,6 +869,7 @@ class AdminBibleService:
             detail=f"Updated fields: {', '.join(changed_fields)}.",
             metadata={"changed_fields": changed_fields},
         )
+
         return chapter
 
     @staticmethod
@@ -887,7 +881,6 @@ class AdminBibleService:
         )
         title: str = chapter.title
         chapter.delete()
-
         AdminLogService.log_action(
             admin_user=admin_user,
             action=AdminLog.ActionType.DELETE,
@@ -904,28 +897,25 @@ class AdminBibleService:
         ordered_ids: list[UUID],
     ) -> QuerySet[SegregatedChapter]:
         """Bulk-update chapter order within a section.
-
         ``ordered_ids`` is a list of chapter UUIDs in the desired display
         order; the index becomes the new ``order`` value.
-
         Returns the updated queryset so callers can serialize the result.
         """
         chapters = SegregatedChapter.objects.filter(
             section_id=section_id,
             pk__in=ordered_ids,
         )
-        chapter_map: dict[UUID, SegregatedChapter] = {
-            c.pk: c for c in chapters
-        }
+        chapter_map: dict[UUID, SegregatedChapter] = {c.pk: c for c in chapters}
         to_update: list[SegregatedChapter] = []
+
         for index, chapter_id in enumerate(ordered_ids):
             chapter = chapter_map.get(chapter_id)
+
             if chapter is not None:
                 chapter.order = index
                 to_update.append(chapter)
 
         SegregatedChapter.objects.bulk_update(to_update, ["order"])
-
         AdminLogService.log_action(
             admin_user=admin_user,
             action=AdminLog.ActionType.UPDATE,
@@ -935,30 +925,29 @@ class AdminBibleService:
             metadata={"ordered_ids": [str(uid) for uid in ordered_ids]},
         )
 
-        # Return the updated queryset
         return SegregatedChapter.objects.filter(
             section_id=section_id,
         ).order_by("order")
 
-    # -- Pages ----------------------------------------------------------------
-
     @staticmethod
     def list_pages(chapter_id: UUID) -> QuerySet[SegregatedPage]:
         """Return all pages for a given chapter."""
+
         return SegregatedPage.objects.filter(chapter_id=chapter_id)
 
     @staticmethod
     def get_page_detail(page_id: UUID) -> SegregatedPage:
         """Return a single page by ID."""
+
         try:
             return SegregatedPage.objects.select_related(
                 "chapter", "chapter__section"
             ).get(pk=page_id)
+
         except SegregatedPage.DoesNotExist:
             from apps.common.exceptions import NotFoundError
-            raise NotFoundError(
-                detail=f"Page with id '{page_id}' not found."
-            )
+
+            raise NotFoundError(detail=f"Page with id '{page_id}' not found.")
 
     @staticmethod
     @transaction.atomic
@@ -985,6 +974,7 @@ class AdminBibleService:
             target_id=page.pk,
             detail=f"Page created: {title} in chapter {chapter_id}.",
         )
+
         return page
 
     @staticmethod
@@ -995,7 +985,6 @@ class AdminBibleService:
         **kwargs: Any,
     ) -> SegregatedPage:
         """Update a page and log the action.
-
         If the ``content`` field is changed, all cached translations for
         this page are invalidated.
         """
@@ -1004,15 +993,17 @@ class AdminBibleService:
             pk=page_id,
         )
         changed_fields: list[str] = []
+
         for field, value in clean_kwargs.items():
             setattr(page, field, value)
             changed_fields.append(field)
+
         if changed_fields:
             if "updated_at" not in changed_fields and hasattr(page, "updated_at"):
                 changed_fields.append("updated_at")
+
             page.save(update_fields=changed_fields)
 
-        # Invalidate translation cache when content changes.
         if "content" in changed_fields:
             TranslatedPageCache.objects.filter(page=page).delete()
 
@@ -1024,6 +1015,7 @@ class AdminBibleService:
             detail=f"Updated fields: {', '.join(changed_fields)}.",
             metadata={"changed_fields": changed_fields},
         )
+
         return page
 
     @staticmethod
@@ -1033,7 +1025,6 @@ class AdminBibleService:
         page: SegregatedPage = SegregatedPage.objects.get(pk=page_id)
         title: str = page.title
         page.delete()
-
         AdminLogService.log_action(
             admin_user=admin_user,
             action=AdminLog.ActionType.DELETE,
@@ -1042,7 +1033,6 @@ class AdminBibleService:
             detail=f"Page deleted: {title}.",
         )
 
-
     @staticmethod
     def list_page_comments(
         page_id: UUID | None = None,
@@ -1050,11 +1040,16 @@ class AdminBibleService:
         """Return page comments, optionally filtered by page."""
         qs: QuerySet[SegregatedPageComment] = (
             SegregatedPageComment.objects.select_related(
-                "user", "page", "page__chapter", "page__chapter__section",
+                "user",
+                "page",
+                "page__chapter",
+                "page__chapter__section",
             ).order_by("-created_at")
         )
+
         if page_id is not None:
             qs = qs.filter(page_id=page_id)
+
         return qs
 
     @staticmethod
@@ -1067,11 +1062,11 @@ class AdminBibleService:
             comment: SegregatedPageComment = SegregatedPageComment.objects.get(
                 pk=comment_id,
             )
+
         except SegregatedPageComment.DoesNotExist:
             raise NotFoundError(detail=f"Comment with id '{comment_id}' not found.")
 
         comment.delete()
-
         AdminLogService.log_action(
             admin_user=admin_user,
             action=AdminLog.ActionType.DELETE,
@@ -1083,6 +1078,7 @@ class AdminBibleService:
     @staticmethod
     def get_page_like_stats() -> list[dict[str, Any]]:
         """Return like counts per page with breadcrumb titles."""
+
         return list(
             SegregatedPage.objects.filter(
                 likes__isnull=False,
@@ -1100,11 +1096,6 @@ class AdminBibleService:
         )
 
 
-# ---------------------------------------------------------------------------
-# 7. AdminShopService
-# ---------------------------------------------------------------------------
-
-
 class AdminShopService:
     """Product catalogue and purchase management."""
 
@@ -1115,22 +1106,26 @@ class AdminShopService:
     ) -> QuerySet[Product]:
         """Return a filtered product queryset."""
         qs: QuerySet[Product] = Product.objects.all()
+
         if category is not None:
             qs = qs.filter(category=category)
+
         if is_active is not None:
             qs = qs.filter(is_active=is_active)
+
         return qs
 
     @staticmethod
     def get_product_detail(product_id: UUID) -> Product:
         """Return a single product by ID."""
+
         try:
             return Product.objects.get(pk=product_id)
+
         except Product.DoesNotExist:
             from apps.common.exceptions import NotFoundError
-            raise NotFoundError(
-                detail=f"Product with id '{product_id}' not found."
-            )
+
+            raise NotFoundError(detail=f"Product with id '{product_id}' not found.")
 
     @staticmethod
     @transaction.atomic
@@ -1165,6 +1160,7 @@ class AdminShopService:
             target_id=product.pk,
             detail=f"Product created: {title}.",
         )
+
         return product
 
     @staticmethod
@@ -1180,12 +1176,15 @@ class AdminShopService:
             pk=product_id,
         )
         changed_fields: list[str] = []
+
         for field, value in clean_kwargs.items():
             setattr(product, field, value)
             changed_fields.append(field)
+
         if changed_fields:
             if "updated_at" not in changed_fields and hasattr(product, "updated_at"):
                 changed_fields.append("updated_at")
+
             product.save(update_fields=changed_fields)
 
         AdminLogService.log_action(
@@ -1196,6 +1195,7 @@ class AdminShopService:
             detail=f"Updated fields: {', '.join(changed_fields)}.",
             metadata={"changed_fields": changed_fields},
         )
+
         return product
 
     @staticmethod
@@ -1205,7 +1205,6 @@ class AdminShopService:
         product: Product = Product.objects.get(pk=product_id)
         title: str = product.title
         product.delete()
-
         AdminLogService.log_action(
             admin_user=admin_user,
             action=AdminLog.ActionType.DELETE,
@@ -1223,7 +1222,6 @@ class AdminShopService:
         )
         product.is_active = not product.is_active
         product.save(update_fields=["is_active", "updated_at"])
-
         AdminLogService.log_action(
             admin_user=admin_user,
             action=AdminLog.ActionType.UPDATE,
@@ -1231,11 +1229,13 @@ class AdminShopService:
             target_id=product_id,
             detail=f"Product {'activated' if product.is_active else 'deactivated'}: {product.title}.",
         )
+
         return product
 
     @staticmethod
     def get_product_stats(product_id: UUID) -> dict[str, int]:
         """Return purchase and download counts for a single product."""
+
         return {
             "purchase_count": Purchase.objects.filter(
                 product_id=product_id,
@@ -1255,16 +1255,14 @@ class AdminShopService:
             "user",
             "product",
         )
+
         if product_id is not None:
             qs = qs.filter(product_id=product_id)
+
         if user_id is not None:
             qs = qs.filter(user_id=user_id)
+
         return qs
-
-
-# ---------------------------------------------------------------------------
-# 8. AdminBoostService
-# ---------------------------------------------------------------------------
 
 
 class AdminBoostService:
@@ -1280,36 +1278,42 @@ class AdminBoostService:
             "post",
             "user",
         )
+
         if is_active is not None:
             qs = qs.filter(is_active=is_active)
+
         if user_id is not None:
             qs = qs.filter(user_id=user_id)
+
         return qs
 
     @staticmethod
     def get_boost_detail(boost_id: UUID) -> PostBoost:
         """Return a PostBoost with related objects."""
+
         try:
             return PostBoost.objects.select_related(
                 "post",
                 "user",
             ).get(pk=boost_id)
+
         except PostBoost.DoesNotExist:
             from apps.common.exceptions import NotFoundError
-            raise NotFoundError(
-                detail=f"Boost with id '{boost_id}' not found."
-            )
+
+            raise NotFoundError(detail=f"Boost with id '{boost_id}' not found.")
 
     @staticmethod
     def get_boost_snapshots(boost_id: UUID) -> QuerySet[BoostAnalyticSnapshot]:
         """Return analytics snapshots for a specific boost."""
-        return BoostAnalyticSnapshot.objects.filter(
-            boost_id=boost_id
-        ).order_by("-snapshot_date")
+
+        return BoostAnalyticSnapshot.objects.filter(boost_id=boost_id).order_by(
+            "-snapshot_date"
+        )
 
     @staticmethod
     def list_boost_tiers() -> QuerySet[BoostTier]:
         """Return all boost tiers."""
+
         return BoostTier.objects.all()
 
     @staticmethod
@@ -1337,6 +1341,7 @@ class AdminBoostService:
             target_id=tier.pk,
             detail=f"Boost tier created: {name} ({duration_days} days, {display_price}).",
         )
+
         return tier
 
     @staticmethod
@@ -1352,12 +1357,15 @@ class AdminBoostService:
             pk=tier_id,
         )
         changed_fields: list[str] = []
+
         for field, value in clean_kwargs.items():
             setattr(tier, field, value)
             changed_fields.append(field)
+
         if changed_fields:
             if "updated_at" not in changed_fields and hasattr(tier, "updated_at"):
                 changed_fields.append("updated_at")
+
             tier.save(update_fields=changed_fields)
 
         AdminLogService.log_action(
@@ -1368,6 +1376,7 @@ class AdminBoostService:
             detail=f"Updated fields: {', '.join(changed_fields)}.",
             metadata={"changed_fields": changed_fields},
         )
+
         return tier
 
     @staticmethod
@@ -1377,7 +1386,6 @@ class AdminBoostService:
         tier: BoostTier = BoostTier.objects.get(pk=tier_id)
         name: str = tier.name
         tier.delete()
-
         AdminLogService.log_action(
             admin_user=admin_user,
             action=AdminLog.ActionType.DELETE,
@@ -1391,7 +1399,6 @@ class AdminBoostService:
         """Return aggregate boost metrics grouped by tier."""
         total_boosts: int = PostBoost.objects.count()
         active_boosts: int = PostBoost.objects.filter(is_active=True).count()
-
         revenue_by_tier = (
             PostBoost.objects.values("tier")
             .annotate(
@@ -1409,11 +1416,6 @@ class AdminBoostService:
         }
 
 
-# ---------------------------------------------------------------------------
-# 9. AdminBroadcastService
-# ---------------------------------------------------------------------------
-
-
 class AdminBroadcastService:
     """System-wide broadcast notification management."""
 
@@ -1426,7 +1428,6 @@ class AdminBroadcastService:
         filters: dict[str, Any] | None = None,
     ) -> list[Notification]:
         """Create a broadcast notification for all users matching filters.
-
         ``filters`` may contain: ``country``, ``language``,
         ``age_min``, ``age_max``.
         """
@@ -1438,23 +1439,26 @@ class AdminBroadcastService:
 
         if "country" in segment_filters:
             user_qs = user_qs.filter(country=segment_filters["country"])
+
         if "language" in segment_filters:
             user_qs = user_qs.filter(preferred_language=segment_filters["language"])
+
         if "age_min" in segment_filters or "age_max" in segment_filters:
             today = timezone.now().date()
+
             if "age_max" in segment_filters:
-                # Users at most age_max years old → born on or after this date.
                 age_max = int(segment_filters["age_max"])
-                min_dob = _subtract_years(today, age_max + 1) + datetime.timedelta(days=1)
+                min_dob = _subtract_years(today, age_max + 1) + datetime.timedelta(
+                    days=1
+                )
                 user_qs = user_qs.filter(date_of_birth__gte=min_dob)
+
             if "age_min" in segment_filters:
-                # Users at least age_min years old → born on or before this date.
                 age_min = int(segment_filters["age_min"])
                 max_dob = _subtract_years(today, age_min)
                 user_qs = user_qs.filter(date_of_birth__lte=max_dob)
 
         user_ids: list[UUID] = list(user_qs.values_list("id", flat=True))
-
         notifications: list[Notification] = Notification.objects.bulk_create(
             [
                 Notification(
@@ -1468,7 +1472,6 @@ class AdminBroadcastService:
                 for uid in user_ids
             ]
         )
-
         AdminLogService.log_action(
             admin_user=admin_user,
             action=AdminLog.ActionType.BROADCAST,
@@ -1480,14 +1483,15 @@ class AdminBroadcastService:
                 "filters": segment_filters,
             },
         )
+
         return notifications
 
     @staticmethod
     def list_broadcasts() -> QuerySet[Notification]:
         """Return unique broadcast notifications, newest first.
-
         Groups by title + created_at to avoid duplicate rows (one per recipient).
         """
+
         return (
             Notification.objects.filter(
                 notification_type=Notification.NotificationType.SYSTEM_BROADCAST,
@@ -1500,7 +1504,6 @@ class AdminBroadcastService:
     @staticmethod
     def get_broadcast_detail(notification_id: UUID) -> dict[str, Any]:
         """Return a broadcast notification together with delivery stats.
-
         Because broadcasts produce one ``Notification`` row per recipient,
         we look up all notifications sharing the same title, body, and
         broadcast data.
@@ -1508,15 +1511,12 @@ class AdminBroadcastService:
         notification: Notification = Notification.objects.get(
             pk=notification_id,
         )
-
-        # Find all notification rows that belong to this broadcast batch.
         batch_qs: QuerySet[Notification] = Notification.objects.filter(
             notification_type=Notification.NotificationType.SYSTEM_BROADCAST,
             title=notification.title,
             body=notification.body,
             created_at=notification.created_at,
         )
-
         total_sent: int = batch_qs.count()
         total_read: int = batch_qs.filter(is_read=True).count()
 
@@ -1528,11 +1528,6 @@ class AdminBroadcastService:
         }
 
 
-# ---------------------------------------------------------------------------
-# 10. AdminAnalyticsService
-# ---------------------------------------------------------------------------
-
-
 class AdminAnalyticsService:
     """Platform-wide analytics and demographic reports."""
 
@@ -1541,10 +1536,7 @@ class AdminAnalyticsService:
         """Return aggregated demographic data for the user base."""
         now = timezone.now()
         today = now.date()
-
-        # Age distribution buckets.
         users = User.objects.filter(is_active=True)
-
         age_buckets: dict[str, int] = {
             "under_18": 0,
             "18_24": 0,
@@ -1557,37 +1549,37 @@ class AdminAnalyticsService:
         for dob in users.values_list("date_of_birth", flat=True).iterator():
             if dob is None:
                 continue
+
             age: int = (
                 today.year
                 - dob.year
                 - ((today.month, today.day) < (dob.month, dob.day))
             )
+
             if age < 18:
                 age_buckets["under_18"] += 1
+
             elif age <= 24:
                 age_buckets["18_24"] += 1
+
             elif age <= 34:
                 age_buckets["25_34"] += 1
+
             elif age <= 44:
                 age_buckets["35_44"] += 1
+
             elif age <= 54:
                 age_buckets["45_54"] += 1
+
             else:
                 age_buckets["55_plus"] += 1
 
-        # Gender split.
         gender_split = list(
             users.values("gender").annotate(count=Count("id")).order_by("gender")
         )
-
-        # Top-10 countries.
         country_top_10 = list(
-            users.values("country")
-            .annotate(count=Count("id"))
-            .order_by("-count")[:10]
+            users.values("country").annotate(count=Count("id")).order_by("-count")[:10]
         )
-
-        # Language distribution.
         language_distribution = list(
             users.values("preferred_language")
             .annotate(count=Count("id"))
@@ -1605,7 +1597,6 @@ class AdminAnalyticsService:
     def get_content_engagement(days: int = 30) -> dict[str, Any]:
         """Return daily engagement metrics for the last *days* days."""
         since = timezone.now() - datetime.timedelta(days=days)
-
         posts_per_day = list(
             Post.objects.filter(created_at__gte=since)
             .annotate(date=TruncDate("created_at"))
@@ -1613,7 +1604,6 @@ class AdminAnalyticsService:
             .annotate(count=Count("id"))
             .order_by("date")
         )
-
         prayers_per_day = list(
             Prayer.objects.filter(created_at__gte=since)
             .annotate(date=TruncDate("created_at"))
@@ -1621,7 +1611,6 @@ class AdminAnalyticsService:
             .annotate(count=Count("id"))
             .order_by("date")
         )
-
         comments_per_day = list(
             Comment.objects.filter(created_at__gte=since)
             .annotate(date=TruncDate("created_at"))
@@ -1629,7 +1618,6 @@ class AdminAnalyticsService:
             .annotate(count=Count("id"))
             .order_by("date")
         )
-
         from apps.social.models import Reaction  # noqa: E402 -- avoid circular at top
 
         reactions_per_day = list(
@@ -1652,17 +1640,13 @@ class AdminAnalyticsService:
         """Return PostView counts scoped to bible-related content types."""
         page_ct = ContentType.objects.get_for_model(SegregatedPage)
         chapter_ct = ContentType.objects.get_for_model(SegregatedChapter)
-
         total_page_views: int = PostView.objects.filter(
             content_type__in=[page_ct, chapter_ct],
         ).count()
-
         views_per_section = list(
             PostView.objects.filter(content_type=page_ct)
             .values(
-                section_title=F(
-                    "object_id"  # grouped below via raw annotation
-                ),
+                section_title=F("object_id"),
             )
             .annotate(count=Count("id"))
             .order_by("-count")[:10]
@@ -1677,7 +1661,6 @@ class AdminAnalyticsService:
     def get_shop_revenue(days: int = 30) -> dict[str, Any]:
         """Return daily purchase counts with product breakdown."""
         since = timezone.now() - datetime.timedelta(days=days)
-
         purchases_per_day = list(
             Purchase.objects.filter(created_at__gte=since)
             .annotate(date=TruncDate("created_at"))
@@ -1685,7 +1668,6 @@ class AdminAnalyticsService:
             .annotate(count=Count("id"))
             .order_by("date")
         )
-
         by_product = list(
             Purchase.objects.filter(created_at__gte=since)
             .values(product_title=F("product__title"))
@@ -1703,7 +1685,6 @@ class AdminAnalyticsService:
         """Return aggregate boost performance metrics."""
         total_boosts: int = PostBoost.objects.count()
         active_boosts: int = PostBoost.objects.filter(is_active=True).count()
-
         aggregate = BoostAnalyticSnapshot.objects.aggregate(
             total_impressions=Sum("impressions"),
             total_reach=Sum("reach"),

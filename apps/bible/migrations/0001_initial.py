@@ -7,185 +7,491 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
     dependencies = [
-        ('contenttypes', '0002_remove_content_type_name'),
+        ("contenttypes", "0002_remove_content_type_name"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='SegregatedChapter',
+            name="SegregatedChapter",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_at', models.DateTimeField(auto_now_add=True, db_index=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('title', models.CharField(max_length=255)),
-                ('order', models.PositiveSmallIntegerField(db_index=True, default=0)),
-                ('is_active', models.BooleanField(db_index=True, default=True)),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True, db_index=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("title", models.CharField(max_length=255)),
+                ("order", models.PositiveSmallIntegerField(db_index=True, default=0)),
+                ("is_active", models.BooleanField(db_index=True, default=True)),
             ],
             options={
-                'verbose_name': 'segregated chapter',
-                'verbose_name_plural': 'segregated chapters',
-                'ordering': ['order'],
+                "verbose_name": "segregated chapter",
+                "verbose_name_plural": "segregated chapters",
+                "ordering": ["order"],
             },
         ),
         migrations.CreateModel(
-            name='SegregatedPage',
+            name="SegregatedPage",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_at', models.DateTimeField(auto_now_add=True, db_index=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('title', models.CharField(max_length=255)),
-                ('content', models.TextField(help_text='Markdown text with base64 embedded images.')),
-                ('youtube_url', models.URLField(blank=True, default='')),
-                ('order', models.PositiveSmallIntegerField(db_index=True, default=0)),
-                ('is_active', models.BooleanField(db_index=True, default=True)),
-                ('chapter', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='pages', to='bible.segregatedchapter')),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True, db_index=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("title", models.CharField(max_length=255)),
+                (
+                    "content",
+                    models.TextField(
+                        help_text="Markdown text with base64 embedded images."
+                    ),
+                ),
+                ("youtube_url", models.URLField(blank=True, default="")),
+                ("order", models.PositiveSmallIntegerField(db_index=True, default=0)),
+                ("is_active", models.BooleanField(db_index=True, default=True)),
+                (
+                    "chapter",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="pages",
+                        to="bible.segregatedchapter",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'segregated page',
-                'verbose_name_plural': 'segregated pages',
-                'ordering': ['order'],
+                "verbose_name": "segregated page",
+                "verbose_name_plural": "segregated pages",
+                "ordering": ["order"],
             },
         ),
         migrations.CreateModel(
-            name='SegregatedPageComment',
+            name="SegregatedPageComment",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_at', models.DateTimeField(auto_now_add=True, db_index=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('content', models.TextField(max_length=1000)),
-                ('page', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='comments', to='bible.segregatedpage')),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='page_comments', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True, db_index=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("content", models.TextField(max_length=1000)),
+                (
+                    "page",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="comments",
+                        to="bible.segregatedpage",
+                    ),
+                ),
+                (
+                    "user",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="page_comments",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'ordering': ['-created_at'],
+                "ordering": ["-created_at"],
             },
         ),
         migrations.CreateModel(
-            name='SegregatedPageLike',
+            name="SegregatedPageLike",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_at', models.DateTimeField(auto_now_add=True, db_index=True)),
-                ('page', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='likes', to='bible.segregatedpage')),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='page_likes', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True, db_index=True)),
+                (
+                    "page",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="likes",
+                        to="bible.segregatedpage",
+                    ),
+                ),
+                (
+                    "user",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="page_likes",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
         ),
         migrations.CreateModel(
-            name='SegregatedSection',
+            name="SegregatedSection",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_at', models.DateTimeField(auto_now_add=True, db_index=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('title', models.CharField(max_length=255)),
-                ('age_min', models.PositiveSmallIntegerField()),
-                ('age_max', models.PositiveSmallIntegerField()),
-                ('order', models.PositiveSmallIntegerField(db_index=True, default=0)),
-                ('is_active', models.BooleanField(db_index=True, default=True)),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True, db_index=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("title", models.CharField(max_length=255)),
+                ("age_min", models.PositiveSmallIntegerField()),
+                ("age_max", models.PositiveSmallIntegerField()),
+                ("order", models.PositiveSmallIntegerField(db_index=True, default=0)),
+                ("is_active", models.BooleanField(db_index=True, default=True)),
             ],
             options={
-                'verbose_name': 'segregated section',
-                'verbose_name_plural': 'segregated sections',
-                'ordering': ['order'],
-                'constraints': [models.CheckConstraint(condition=models.Q(('age_min__lte', models.F('age_max'))), name='age_min_lte_age_max')],
+                "verbose_name": "segregated section",
+                "verbose_name_plural": "segregated sections",
+                "ordering": ["order"],
+                "constraints": [
+                    models.CheckConstraint(
+                        condition=models.Q(("age_min__lte", models.F("age_max"))),
+                        name="age_min_lte_age_max",
+                    )
+                ],
             },
         ),
         migrations.AddField(
-            model_name='segregatedchapter',
-            name='section',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='chapters', to='bible.segregatedsection'),
+            model_name="segregatedchapter",
+            name="section",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="chapters",
+                to="bible.segregatedsection",
+            ),
         ),
         migrations.CreateModel(
-            name='TranslatedPageCache',
+            name="TranslatedPageCache",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('language_code', models.CharField(max_length=10)),
-                ('translated_content', models.TextField()),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('page', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='translations', to='bible.segregatedpage')),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("language_code", models.CharField(max_length=10)),
+                ("translated_content", models.TextField()),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                (
+                    "page",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="translations",
+                        to="bible.segregatedpage",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'translated page cache',
-                'verbose_name_plural': 'translated page caches',
+                "verbose_name": "translated page cache",
+                "verbose_name_plural": "translated page caches",
             },
         ),
         migrations.CreateModel(
-            name='Bookmark',
+            name="Bookmark",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_at', models.DateTimeField(auto_now_add=True, db_index=True)),
-                ('object_id', models.UUIDField(blank=True, null=True)),
-                ('bookmark_type', models.CharField(choices=[('api_bible', 'API Bible'), ('segregated', 'Segregated')], max_length=20)),
-                ('verse_reference', models.CharField(blank=True, default='', help_text="API Bible verse reference, e.g. 'JHN.3.16'.", max_length=50)),
-                ('content_type', models.ForeignKey(blank=True, limit_choices_to=models.Q(('app_label', 'bible'), ('model__in', ['segregatedchapter', 'segregatedpage'])), null=True, on_delete=django.db.models.deletion.CASCADE, to='contenttypes.contenttype')),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='bookmarks', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True, db_index=True)),
+                ("object_id", models.UUIDField(blank=True, null=True)),
+                (
+                    "bookmark_type",
+                    models.CharField(
+                        choices=[
+                            ("api_bible", "API Bible"),
+                            ("segregated", "Segregated"),
+                        ],
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "verse_reference",
+                    models.CharField(
+                        blank=True,
+                        default="",
+                        help_text="API Bible verse reference, e.g. 'JHN.3.16'.",
+                        max_length=50,
+                    ),
+                ),
+                (
+                    "content_type",
+                    models.ForeignKey(
+                        blank=True,
+                        limit_choices_to=models.Q(
+                            ("app_label", "bible"),
+                            ("model__in", ["segregatedchapter", "segregatedpage"]),
+                        ),
+                        null=True,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="contenttypes.contenttype",
+                    ),
+                ),
+                (
+                    "user",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="bookmarks",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'bookmark',
-                'verbose_name_plural': 'bookmarks',
-                'ordering': ['-created_at'],
-                'indexes': [models.Index(fields=['user', 'bookmark_type'], name='bible_bookm_user_id_3b2315_idx'), models.Index(fields=['user', 'content_type', 'object_id'], name='bible_bookm_user_id_e4c87c_idx')],
-                'constraints': [models.UniqueConstraint(condition=models.Q(('bookmark_type', 'api_bible')), fields=('user', 'bookmark_type', 'verse_reference'), name='unique_api_bible_bookmark'), models.UniqueConstraint(condition=models.Q(('bookmark_type', 'segregated')), fields=('user', 'content_type', 'object_id'), name='unique_segregated_bookmark')],
+                "verbose_name": "bookmark",
+                "verbose_name_plural": "bookmarks",
+                "ordering": ["-created_at"],
+                "indexes": [
+                    models.Index(
+                        fields=["user", "bookmark_type"],
+                        name="bible_bookm_user_id_3b2315_idx",
+                    ),
+                    models.Index(
+                        fields=["user", "content_type", "object_id"],
+                        name="bible_bookm_user_id_e4c87c_idx",
+                    ),
+                ],
+                "constraints": [
+                    models.UniqueConstraint(
+                        condition=models.Q(("bookmark_type", "api_bible")),
+                        fields=("user", "bookmark_type", "verse_reference"),
+                        name="unique_api_bible_bookmark",
+                    ),
+                    models.UniqueConstraint(
+                        condition=models.Q(("bookmark_type", "segregated")),
+                        fields=("user", "content_type", "object_id"),
+                        name="unique_segregated_bookmark",
+                    ),
+                ],
             },
         ),
         migrations.CreateModel(
-            name='Highlight',
+            name="Highlight",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_at', models.DateTimeField(auto_now_add=True, db_index=True)),
-                ('object_id', models.UUIDField(blank=True, null=True)),
-                ('highlight_type', models.CharField(choices=[('api_bible', 'API Bible'), ('segregated', 'Segregated')], max_length=20)),
-                ('verse_reference', models.CharField(blank=True, default='', help_text='API Bible verse reference for API Bible highlights.', max_length=50)),
-                ('selection_start', models.PositiveIntegerField(blank=True, help_text='Start character offset for text selection (segregated only).', null=True)),
-                ('selection_end', models.PositiveIntegerField(blank=True, help_text='End character offset for text selection (segregated only).', null=True)),
-                ('color', models.CharField(choices=[('yellow', 'Yellow'), ('green', 'Green'), ('blue', 'Blue'), ('pink', 'Pink')], default='yellow', max_length=10)),
-                ('content_type', models.ForeignKey(blank=True, limit_choices_to=models.Q(('app_label', 'bible'), ('model', 'segregatedpage')), null=True, on_delete=django.db.models.deletion.CASCADE, to='contenttypes.contenttype')),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='highlights', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True, db_index=True)),
+                ("object_id", models.UUIDField(blank=True, null=True)),
+                (
+                    "highlight_type",
+                    models.CharField(
+                        choices=[
+                            ("api_bible", "API Bible"),
+                            ("segregated", "Segregated"),
+                        ],
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "verse_reference",
+                    models.CharField(
+                        blank=True,
+                        default="",
+                        help_text="API Bible verse reference for API Bible highlights.",
+                        max_length=50,
+                    ),
+                ),
+                (
+                    "selection_start",
+                    models.PositiveIntegerField(
+                        blank=True,
+                        help_text="Start character offset for text selection (segregated only).",
+                        null=True,
+                    ),
+                ),
+                (
+                    "selection_end",
+                    models.PositiveIntegerField(
+                        blank=True,
+                        help_text="End character offset for text selection (segregated only).",
+                        null=True,
+                    ),
+                ),
+                (
+                    "color",
+                    models.CharField(
+                        choices=[
+                            ("yellow", "Yellow"),
+                            ("green", "Green"),
+                            ("blue", "Blue"),
+                            ("pink", "Pink"),
+                        ],
+                        default="yellow",
+                        max_length=10,
+                    ),
+                ),
+                (
+                    "content_type",
+                    models.ForeignKey(
+                        blank=True,
+                        limit_choices_to=models.Q(
+                            ("app_label", "bible"), ("model", "segregatedpage")
+                        ),
+                        null=True,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="contenttypes.contenttype",
+                    ),
+                ),
+                (
+                    "user",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="highlights",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'highlight',
-                'verbose_name_plural': 'highlights',
-                'ordering': ['-created_at'],
-                'indexes': [models.Index(fields=['user', 'highlight_type'], name='bible_highl_user_id_000dc3_idx'), models.Index(fields=['user', 'content_type', 'object_id'], name='bible_highl_user_id_cbf467_idx')],
+                "verbose_name": "highlight",
+                "verbose_name_plural": "highlights",
+                "ordering": ["-created_at"],
+                "indexes": [
+                    models.Index(
+                        fields=["user", "highlight_type"],
+                        name="bible_highl_user_id_000dc3_idx",
+                    ),
+                    models.Index(
+                        fields=["user", "content_type", "object_id"],
+                        name="bible_highl_user_id_cbf467_idx",
+                    ),
+                ],
             },
         ),
         migrations.CreateModel(
-            name='Note',
+            name="Note",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_at', models.DateTimeField(auto_now_add=True, db_index=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('object_id', models.UUIDField(blank=True, null=True)),
-                ('note_type', models.CharField(choices=[('api_bible', 'API Bible'), ('segregated', 'Segregated')], max_length=20)),
-                ('verse_reference', models.CharField(blank=True, default='', help_text='API Bible verse reference for API Bible notes.', max_length=50)),
-                ('text', models.TextField()),
-                ('content_type', models.ForeignKey(blank=True, limit_choices_to=models.Q(('app_label', 'bible'), ('model', 'segregatedpage')), null=True, on_delete=django.db.models.deletion.CASCADE, to='contenttypes.contenttype')),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='notes', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True, db_index=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("object_id", models.UUIDField(blank=True, null=True)),
+                (
+                    "note_type",
+                    models.CharField(
+                        choices=[
+                            ("api_bible", "API Bible"),
+                            ("segregated", "Segregated"),
+                        ],
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "verse_reference",
+                    models.CharField(
+                        blank=True,
+                        default="",
+                        help_text="API Bible verse reference for API Bible notes.",
+                        max_length=50,
+                    ),
+                ),
+                ("text", models.TextField()),
+                (
+                    "content_type",
+                    models.ForeignKey(
+                        blank=True,
+                        limit_choices_to=models.Q(
+                            ("app_label", "bible"), ("model", "segregatedpage")
+                        ),
+                        null=True,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        to="contenttypes.contenttype",
+                    ),
+                ),
+                (
+                    "user",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="notes",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'note',
-                'verbose_name_plural': 'notes',
-                'ordering': ['-created_at'],
-                'indexes': [models.Index(fields=['user', 'note_type'], name='bible_note_user_id_b690aa_idx'), models.Index(fields=['user', 'content_type', 'object_id'], name='bible_note_user_id_722d6e_idx')],
+                "verbose_name": "note",
+                "verbose_name_plural": "notes",
+                "ordering": ["-created_at"],
+                "indexes": [
+                    models.Index(
+                        fields=["user", "note_type"],
+                        name="bible_note_user_id_b690aa_idx",
+                    ),
+                    models.Index(
+                        fields=["user", "content_type", "object_id"],
+                        name="bible_note_user_id_722d6e_idx",
+                    ),
+                ],
             },
         ),
         migrations.AddIndex(
-            model_name='segregatedpage',
-            index=models.Index(fields=['chapter', 'order'], name='bible_segre_chapter_b942d0_idx'),
+            model_name="segregatedpage",
+            index=models.Index(
+                fields=["chapter", "order"], name="bible_segre_chapter_b942d0_idx"
+            ),
         ),
         migrations.AddConstraint(
-            model_name='segregatedpagelike',
-            constraint=models.UniqueConstraint(fields=('user', 'page'), name='unique_page_like'),
+            model_name="segregatedpagelike",
+            constraint=models.UniqueConstraint(
+                fields=("user", "page"), name="unique_page_like"
+            ),
         ),
         migrations.AddIndex(
-            model_name='segregatedchapter',
-            index=models.Index(fields=['section', 'order'], name='bible_segre_section_ff0984_idx'),
+            model_name="segregatedchapter",
+            index=models.Index(
+                fields=["section", "order"], name="bible_segre_section_ff0984_idx"
+            ),
         ),
         migrations.AddConstraint(
-            model_name='translatedpagecache',
-            constraint=models.UniqueConstraint(fields=('page', 'language_code'), name='unique_translation_per_page_per_language'),
+            model_name="translatedpagecache",
+            constraint=models.UniqueConstraint(
+                fields=("page", "language_code"),
+                name="unique_translation_per_page_per_language",
+            ),
         ),
     ]

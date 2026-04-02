@@ -1,7 +1,5 @@
 from __future__ import annotations
-
 from django.urls import path
-
 from .views import (
     AdminBibleReadingStatsView,
     AdminBoostDetailView,
@@ -57,7 +55,6 @@ from .views import (
 app_name: str = "admin_panel"
 
 urlpatterns: list = [
-    # ── Dashboard ──────────────────────────────────────────────────────
     path(
         "dashboard/overview/",
         DashboardOverviewView.as_view(),
@@ -68,7 +65,6 @@ urlpatterns: list = [
         UserGrowthView.as_view(),
         name="dashboard-user-growth",
     ),
-    # ── User Management ────────────────────────────────────────────────
     path(
         "users/",
         AdminUserListView.as_view(),
@@ -89,7 +85,6 @@ urlpatterns: list = [
         AdminUserUnsuspendView.as_view(),
         name="user-unsuspend",
     ),
-    # ── Admin User Management ──────────────────────────────────────────
     path(
         "admin-users/",
         AdminUsersListView.as_view(),
@@ -110,7 +105,6 @@ urlpatterns: list = [
         AdminUserDeleteView.as_view(),
         name="admin-user-delete",
     ),
-    # ── Content Moderation ─────────────────────────────────────────────
     path(
         "reports/",
         AdminReportListView.as_view(),
@@ -126,7 +120,6 @@ urlpatterns: list = [
         AdminReportActionView.as_view(),
         name="report-action",
     ),
-    # ── Verse of the Day ───────────────────────────────────────────────
     path(
         "verses/",
         AdminVerseListView.as_view(),
@@ -152,21 +145,16 @@ urlpatterns: list = [
         AdminFallbackPoolCreateView.as_view(),
         name="fallback-pool-create",
     ),
-    # AdminFallbackPoolUpdateView handles both PUT (update) and DELETE (delete)
-    # at this path. AdminFallbackPoolDeleteView remains available as a standalone class.
     path(
         "verses/fallback-pool/<uuid:verse_id>/",
         AdminFallbackPoolUpdateView.as_view(),
         name="fallback-pool-detail",
     ),
-    # AdminVerseUpdateView handles both PUT (update) and DELETE (delete)
-    # at this path. AdminVerseDeleteView remains available as a standalone class.
     path(
         "verses/<uuid:verse_id>/",
         AdminVerseUpdateView.as_view(),
         name="verse-detail",
     ),
-    # ── Segregated Bible CMS ───────────────────────────────────────────
     path(
         "bible/sections/",
         AdminSectionListView.as_view(),
@@ -217,7 +205,6 @@ urlpatterns: list = [
         AdminPageLikeStatsView.as_view(),
         name="bible-like-stats",
     ),
-    # ── Shop Management ────────────────────────────────────────────────
     path(
         "shop/products/",
         AdminProductListView.as_view(),
@@ -243,7 +230,6 @@ urlpatterns: list = [
         AdminPurchaseListView.as_view(),
         name="shop-purchase-list",
     ),
-    # ── Boost Management ───────────────────────────────────────────────
     path(
         "boosts/",
         AdminBoostListView.as_view(),
@@ -269,7 +255,6 @@ urlpatterns: list = [
         AdminBoostDetailView.as_view(),
         name="boost-detail",
     ),
-    # ── Broadcasts ─────────────────────────────────────────────────────
     path(
         "broadcasts/",
         AdminBroadcastListView.as_view(),
@@ -285,7 +270,6 @@ urlpatterns: list = [
         AdminBroadcastDetailView.as_view(),
         name="broadcast-detail",
     ),
-    # ── Analytics ──────────────────────────────────────────────────────
     path(
         "analytics/demographics/",
         AdminUserDemographicsView.as_view(),
@@ -311,7 +295,6 @@ urlpatterns: list = [
         AdminBibleReadingStatsView.as_view(),
         name="analytics-bible-reading",
     ),
-    # ── Admin Logs ─────────────────────────────────────────────────────
     path(
         "logs/",
         AdminLogListView.as_view(),

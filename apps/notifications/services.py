@@ -1,23 +1,14 @@
 from __future__ import annotations
-
 import logging
 from typing import Any
 from uuid import UUID
-
 from django.core.cache import cache
 from django.db.models import QuerySet
-
 from apps.common.exceptions import ForbiddenError, NotFoundError
 from apps.common.services import BaseService
-
 from .models import DevicePushToken, Notification
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# NotificationService
-# ---------------------------------------------------------------------------
 
 
 class NotificationService(BaseService[Notification]):
@@ -39,7 +30,6 @@ class NotificationService(BaseService[Notification]):
         data: dict[str, Any] | None = None,
     ) -> Notification:
         """Create a new notification for a user.
-
         After persisting the notification, a Celery task is dispatched
         to deliver it via FCM push notification.
         """
@@ -58,7 +48,6 @@ class NotificationService(BaseService[Notification]):
             recipient_id,
         )
 
-        # Dispatch FCM push notification asynchronously
         try:
             from apps.notifications.tasks import send_push_notification
 
@@ -68,6 +57,7 @@ class NotificationService(BaseService[Notification]):
                 body=body,
                 data={k: str(v) for k, v in (data or {}).items()},
             )
+
         except Exception:
             logger.warning(
                 "Failed to dispatch push notification task for recipient=%s",
@@ -83,6 +73,7 @@ class NotificationService(BaseService[Notification]):
         user_id: UUID,
     ) -> QuerySet[Notification]:
         """Return all notifications for a user, newest first."""
+
         return self.get_queryset().filter(recipient_id=user_id)
 
     def mark_as_read(
@@ -92,44 +83,47 @@ class NotificationService(BaseService[Notification]):
         notification_id: UUID,
     ) -> Notification:
         """Mark a single notification as read."""
+
         try:
             notification = self.get_queryset().get(
                 pk=notification_id, recipient_id=user_id
             )
+
         except Notification.DoesNotExist:
             raise NotFoundError(
                 detail=f"Notification with id '{notification_id}' not found."
             )
+
         notification.is_read = True
         notification.save(update_fields=["is_read"])
         cache.delete(f"unread_count:{user_id}")
+
         return notification
 
     def mark_all_as_read(self, *, user_id: UUID) -> int:
         """Mark all unread notifications for a user as read.
-
         Returns the number of notifications updated.
         """
-        count = (
-            Notification.objects.filter(recipient_id=user_id, is_read=False)
-            .update(is_read=True)
+        count = Notification.objects.filter(recipient_id=user_id, is_read=False).update(
+            is_read=True
         )
         cache.delete(f"unread_count:{user_id}")
+
         return count
 
     def get_unread_count(self, *, user_id: UUID) -> int:
         """Return the count of unread notifications for a user.
-
         Cached for 30 seconds; invalidated on create / mark-read.
         """
         cache_key = f"unread_count:{user_id}"
         count = cache.get(cache_key)
+
         if count is not None:
             return count
-        count = Notification.objects.filter(
-            recipient_id=user_id, is_read=False
-        ).count()
+
+        count = Notification.objects.filter(recipient_id=user_id, is_read=False).count()
         cache.set(cache_key, count, timeout=30)
+
         return count
 
     def delete_notification(
@@ -139,25 +133,23 @@ class NotificationService(BaseService[Notification]):
         notification_id: UUID,
     ) -> None:
         """Delete a notification. Only the recipient may delete."""
+
         try:
             notification = Notification.objects.get(pk=notification_id)
+
         except Notification.DoesNotExist:
             raise NotFoundError(
                 detail=f"Notification with id '{notification_id}' not found."
             )
+
         if notification.recipient_id != user_id:
-            raise ForbiddenError(
-                detail="You can only delete your own notifications."
-            )
+            raise ForbiddenError(detail="You can only delete your own notifications.")
+
         was_unread = not notification.is_read
         notification.delete()
+
         if was_unread:
             cache.delete(f"unread_count:{user_id}")
-
-
-# ---------------------------------------------------------------------------
-# DevicePushTokenService
-# ---------------------------------------------------------------------------
 
 
 class DevicePushTokenService(BaseService[DevicePushToken]):
@@ -173,13 +165,12 @@ class DevicePushTokenService(BaseService[DevicePushToken]):
         platform: str,
     ) -> DevicePushToken:
         """Register or update a device push token (upsert).
-
         If the token already exists for a different user, it is reassigned
         to the current user (device changed hands / re-login). Reassignment
         events are logged at warning level for auditing.
         """
-        # Check if token exists and belongs to a different user (reassignment)
         existing = DevicePushToken.objects.filter(token=token).first()
+
         if existing is not None and existing.user_id != user_id:
             logger.warning(
                 "Device token reassigned: token=%s...%s from user=%s to user=%s",
@@ -204,6 +195,7 @@ class DevicePushTokenService(BaseService[DevicePushToken]):
             user_id,
             platform,
         )
+
         return device_token
 
     def deactivate_token(self, *, user_id: UUID, token: str) -> None:
@@ -212,9 +204,11 @@ class DevicePushTokenService(BaseService[DevicePushToken]):
             token=token,
             user_id=user_id,
         ).update(is_active=False)
+
         if updated == 0:
             raise NotFoundError(detail="Device token not found.")
 
     def get_active_tokens(self, *, user_id: UUID) -> QuerySet[DevicePushToken]:
         """Return all active push tokens for a user."""
+
         return self.get_queryset().filter(user_id=user_id, is_active=True)

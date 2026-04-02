@@ -1,23 +1,21 @@
 from __future__ import annotations
-
 from typing import Any
-
 from rest_framework import serializers
-
 from apps.accounts.models import User
 from apps.admin_panel.models import AdminLog, AdminRole, BoostTier
 from apps.analytics.models import BoostAnalyticSnapshot, PostBoost
-from apps.bible.models import SegregatedChapter, SegregatedPage, SegregatedPageComment, SegregatedSection
+from apps.bible.models import (
+    SegregatedChapter,
+    SegregatedPage,
+    SegregatedPageComment,
+    SegregatedSection,
+)
+
 from apps.common.serializers import BaseModelSerializer, BaseTimestampedSerializer
 from apps.notifications.models import Notification
 from apps.shop.models import Product, Purchase
 from apps.social.models import Report
 from apps.verse_of_day.models import VerseFallbackPool, VerseOfDay
-
-
-# ═══════════════════════════════════════════════════════════════════
-# Reusable nested / inline serializers
-# ═══════════════════════════════════════════════════════════════════
 
 
 class _MinimalUserSerializer(serializers.Serializer):
@@ -33,12 +31,11 @@ class _MinimalPostSerializer(serializers.Serializer):
 
     id = serializers.UUIDField(read_only=True)
     text_content_preview = serializers.SerializerMethodField()
-    author_full_name = serializers.CharField(
-        source="author.full_name", read_only=True
-    )
+    author_full_name = serializers.CharField(source="author.full_name", read_only=True)
 
     def get_text_content_preview(self, obj: Any) -> str:
         text: str = obj.text_content or ""
+
         return text[:120] + ("..." if len(text) > 120 else "")
 
 
@@ -47,11 +44,6 @@ class _MinimalProductSerializer(serializers.Serializer):
 
     id = serializers.UUIDField(read_only=True)
     title = serializers.CharField(read_only=True)
-
-
-# ═══════════════════════════════════════════════════════════════════
-# Dashboard
-# ═══════════════════════════════════════════════════════════════════
 
 
 class DashboardOverviewSerializer(serializers.Serializer):
@@ -73,11 +65,6 @@ class UserGrowthPointSerializer(serializers.Serializer):
 
     date = serializers.DateField()
     count = serializers.IntegerField()
-
-
-# ═══════════════════════════════════════════════════════════════════
-# User Management
-# ═══════════════════════════════════════════════════════════════════
 
 
 class AdminUserListSerializer(BaseModelSerializer):
@@ -139,11 +126,14 @@ class AdminUserDetailSerializer(BaseModelSerializer):
 
     def get_admin_role(self, obj: User) -> str | None:
         role: AdminRole | None = getattr(obj, "admin_role", None)
+
         if role is None:
             try:
                 role = obj.admin_role
+
             except AdminRole.DoesNotExist:
                 return None
+
         return role.get_role_display() if role else None
 
 
@@ -181,16 +171,13 @@ class AdminRoleSerializer(BaseModelSerializer):
         read_only_fields: list[str] = fields
 
 
-# ═══════════════════════════════════════════════════════════════════
-# Content Moderation
-# ═══════════════════════════════════════════════════════════════════
-
-
 class AdminReportListSerializer(BaseTimestampedSerializer):
     """Report list with inline reporter / reviewer previews."""
 
     reporter = _MinimalUserSerializer(read_only=True)
+
     content_type = serializers.CharField(source="content_type.model", read_only=True)
+
     reviewed_by = _MinimalUserSerializer(read_only=True, allow_null=True)
 
     class Meta:
@@ -214,8 +201,11 @@ class AdminReportDetailSerializer(BaseTimestampedSerializer):
     """Report detail — extends list with a preview of the reported content."""
 
     reporter = _MinimalUserSerializer(read_only=True)
+
     content_type = serializers.CharField(source="content_type.model", read_only=True)
+
     reviewed_by = _MinimalUserSerializer(read_only=True, allow_null=True)
+
     content_preview = serializers.SerializerMethodField()
 
     class Meta:
@@ -238,18 +228,24 @@ class AdminReportDetailSerializer(BaseTimestampedSerializer):
 
     def get_content_preview(self, obj: Report) -> str | None:
         """Return the text/title of the reported object, if available."""
+
         try:
             target = obj.content_object
+
         except Exception:
             return None
+
         if target is None:
             return None
-        # Post → text_content, Prayer → title, Comment → text, User → full_name
+
         for attr in ("text_content", "title", "text", "full_name"):
             value = getattr(target, attr, None)
+
             if value:
                 text = str(value)
+
                 return text[:200] + ("..." if len(text) > 200 else "")
+
         return None
 
 
@@ -264,12 +260,10 @@ class AdminReportActionSerializer(serializers.Serializer):
             ("suspend", "Suspend"),
         ]
     )
-    warning_message = serializers.CharField(required=False, allow_blank=True, default="")
 
-
-# ═══════════════════════════════════════════════════════════════════
-# Verse of the Day
-# ═══════════════════════════════════════════════════════════════════
+    warning_message = serializers.CharField(
+        required=False, allow_blank=True, default=""
+    )
 
 
 class AdminVerseOfDaySerializer(BaseTimestampedSerializer):
@@ -355,11 +349,6 @@ class AdminVerseBulkCreateSerializer(serializers.Serializer):
     """Payload for bulk-creating multiple Verse of the Day entries."""
 
     verses = serializers.ListField(child=_VerseBulkItemSerializer())
-
-
-# ═══════════════════════════════════════════════════════════════════
-# Segregated Bible CMS
-# ═══════════════════════════════════════════════════════════════════
 
 
 class AdminSectionSerializer(BaseTimestampedSerializer):
@@ -498,11 +487,6 @@ class AdminPageUpdateSerializer(serializers.Serializer):
     is_active = serializers.BooleanField(required=False)
 
 
-# ═══════════════════════════════════════════════════════════════════
-# Shop Management
-# ═══════════════════════════════════════════════════════════════════
-
-
 class AdminProductSerializer(BaseTimestampedSerializer):
     """Full read representation of a shop product."""
 
@@ -537,9 +521,7 @@ class AdminProductCreateSerializer(serializers.Serializer):
     category = serializers.CharField(max_length=100)
     is_free = serializers.BooleanField(default=False)
     price_tier = serializers.CharField(max_length=50, required=False, default="")
-    apple_product_id = serializers.CharField(
-        max_length=100, required=False, default=""
-    )
+    apple_product_id = serializers.CharField(max_length=100, required=False, default="")
     google_product_id = serializers.CharField(
         max_length=100, required=False, default=""
     )
@@ -571,6 +553,7 @@ class AdminPurchaseSerializer(BaseModelSerializer):
     """Purchase record with nested user and product previews."""
 
     user = _MinimalUserSerializer(read_only=True)
+
     product = _MinimalProductSerializer(read_only=True)
 
     class Meta:
@@ -587,15 +570,11 @@ class AdminPurchaseSerializer(BaseModelSerializer):
         read_only_fields: list[str] = fields
 
 
-# ═══════════════════════════════════════════════════════════════════
-# Boost Management
-# ═══════════════════════════════════════════════════════════════════
-
-
 class AdminBoostSerializer(BaseModelSerializer):
     """PostBoost with nested post preview and user info."""
 
     post = _MinimalPostSerializer(read_only=True)
+
     user = _MinimalUserSerializer(read_only=True)
 
     class Meta:
@@ -683,11 +662,6 @@ class AdminBoostSnapshotSerializer(BaseModelSerializer):
         read_only_fields: list[str] = fields
 
 
-# ═══════════════════════════════════════════════════════════════════
-# Broadcasts
-# ═══════════════════════════════════════════════════════════════════
-
-
 class AdminBroadcastCreateSerializer(serializers.Serializer):
     """Payload for sending a system broadcast notification."""
 
@@ -723,25 +697,19 @@ class AdminBroadcastSerializer(BaseModelSerializer):
 
     def get_recipient_count(self, obj: Notification) -> int:
         """Return total recipients for this broadcast.
-
         Expects the view to annotate *recipient_count* or we fall back to
         counting notifications sharing the same title and timestamp.
         """
         count: int | None = getattr(obj, "_recipient_count", None)
+
         if count is not None:
             return count
-        return (
-            Notification.objects.filter(
-                notification_type=Notification.NotificationType.SYSTEM_BROADCAST,
-                title=obj.title,
-                created_at=obj.created_at,
-            ).count()
-        )
 
-
-# ═══════════════════════════════════════════════════════════════════
-# Analytics
-# ═══════════════════════════════════════════════════════════════════
+        return Notification.objects.filter(
+            notification_type=Notification.NotificationType.SYSTEM_BROADCAST,
+            title=obj.title,
+            created_at=obj.created_at,
+        ).count()
 
 
 class AdminDemographicsSerializer(serializers.Serializer):
@@ -771,18 +739,16 @@ class AdminShopRevenueSerializer(serializers.Serializer):
     product_breakdown = serializers.ListField(read_only=True)
 
 
-# ═══════════════════════════════════════════════════════════════════
-# Admin Logs
-# ═══════════════════════════════════════════════════════════════════
-
-
 class AdminPageCommentSerializer(BaseTimestampedSerializer):
     """Admin view of a user comment on a Bible page."""
 
     user = _MinimalUserSerializer(read_only=True)
+
     page_title = serializers.CharField(source="page.title", read_only=True)
     chapter_title = serializers.CharField(source="page.chapter.title", read_only=True)
-    section_title = serializers.CharField(source="page.chapter.section.title", read_only=True)
+    section_title = serializers.CharField(
+        source="page.chapter.section.title", read_only=True
+    )
 
     class Meta:
         model = SegregatedPageComment

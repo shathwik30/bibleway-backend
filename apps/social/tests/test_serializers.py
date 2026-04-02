@@ -1,12 +1,9 @@
 """Tests for apps.social.serializers — Post, Prayer, Reaction, Comment, Report."""
 
 from __future__ import annotations
-
 import uuid
 from unittest.mock import patch
-
 from django.core.files.uploadedfile import SimpleUploadedFile
-
 from apps.social.models import Reaction, Report
 from apps.social.serializers import (
     CommentCreateSerializer,
@@ -17,33 +14,25 @@ from apps.social.serializers import (
     ReplyCreateSerializer,
 )
 
-
-# ────────────────────────────────────────────────────────────────
-# Helpers
-# ────────────────────────────────────────────────────────────────
-
-# JPEG magic bytes for image validation.
 _JPEG_HEADER = b"\xff\xd8\xff\xe0" + b"\x00" * 12
 
-# MP4 magic bytes for video validation.
 _MP4_HEADER = b"\x00\x00\x00\x1c" + b"ftyp" + b"\x00" * 8
 
 
 def _make_image(name: str = "photo.jpg", size: int = 1024) -> SimpleUploadedFile:
     """Create a minimal fake JPEG UploadedFile with valid magic bytes."""
+
     content = _JPEG_HEADER + b"\x00" * max(0, size - len(_JPEG_HEADER))
+
     return SimpleUploadedFile(name, content, content_type="image/jpeg")
 
 
 def _make_video(name: str = "clip.mp4", size: int = 2048) -> SimpleUploadedFile:
     """Create a minimal fake MP4 UploadedFile with valid magic bytes."""
+
     content = _MP4_HEADER + b"\x00" * max(0, size - len(_MP4_HEADER))
+
     return SimpleUploadedFile(name, content, content_type="video/mp4")
-
-
-# ════════════════════════════════════════════════════════════════
-# PostCreateSerializer
-# ════════════════════════════════════════════════════════════════
 
 
 class TestPostCreateSerializer:
@@ -104,7 +93,6 @@ class TestPostCreateSerializer:
         }
         serializer = PostCreateSerializer(data=data)
         assert not serializer.is_valid()
-        # The serializer's max_length=10 on the ListField may catch this too.
         errors = serializer.errors
         assert "non_field_errors" in errors or "media_files" in errors
 
@@ -154,11 +142,6 @@ class TestPostCreateSerializer:
         serializer = PostCreateSerializer(data=data)
         assert serializer.is_valid(), serializer.errors
         assert mock_validate.call_count == 2
-
-
-# ════════════════════════════════════════════════════════════════
-# PrayerCreateSerializer
-# ════════════════════════════════════════════════════════════════
 
 
 class TestPrayerCreateSerializer:
@@ -239,11 +222,6 @@ class TestPrayerCreateSerializer:
         assert serializer.is_valid(), serializer.errors
 
 
-# ════════════════════════════════════════════════════════════════
-# ReactionCreateSerializer
-# ════════════════════════════════════════════════════════════════
-
-
 class TestReactionCreateSerializer:
     """Tests for ReactionCreateSerializer."""
 
@@ -259,6 +237,7 @@ class TestReactionCreateSerializer:
 
     def test_all_emoji_types_accepted(self):
         """All EmojiType choices are accepted."""
+
         for choice_value, _ in Reaction.EmojiType.choices:
             data = {
                 "emoji_type": choice_value,
@@ -266,7 +245,9 @@ class TestReactionCreateSerializer:
                 "object_id": str(uuid.uuid4()),
             }
             serializer = ReactionCreateSerializer(data=data)
-            assert serializer.is_valid(), f"Failed for emoji_type={choice_value}: {serializer.errors}"
+            assert serializer.is_valid(), (
+                f"Failed for emoji_type={choice_value}: {serializer.errors}"
+            )
 
     def test_invalid_emoji_type_rejected(self):
         """An unknown emoji type is rejected."""
@@ -310,11 +291,6 @@ class TestReactionCreateSerializer:
         serializer = ReactionCreateSerializer(data=data)
         assert not serializer.is_valid()
         assert "object_id" in serializer.errors
-
-
-# ════════════════════════════════════════════════════════════════
-# CommentCreateSerializer
-# ════════════════════════════════════════════════════════════════
 
 
 class TestCommentCreateSerializer:
@@ -384,11 +360,6 @@ class TestCommentCreateSerializer:
         assert "text" in serializer.errors
 
 
-# ════════════════════════════════════════════════════════════════
-# ReplyCreateSerializer
-# ════════════════════════════════════════════════════════════════
-
-
 class TestReplyCreateSerializer:
     """Tests for ReplyCreateSerializer."""
 
@@ -410,11 +381,6 @@ class TestReplyCreateSerializer:
         assert "text" in serializer.errors
 
 
-# ════════════════════════════════════════════════════════════════
-# ReportCreateSerializer
-# ════════════════════════════════════════════════════════════════
-
-
 class TestReportCreateSerializer:
     """Tests for ReportCreateSerializer."""
 
@@ -430,6 +396,7 @@ class TestReportCreateSerializer:
 
     def test_all_reason_choices_accepted(self):
         """All Report.Reason choices are accepted."""
+
         for choice_value, _ in Report.Reason.choices:
             data = {
                 "reason": choice_value,
@@ -437,10 +404,13 @@ class TestReportCreateSerializer:
                 "object_id": str(uuid.uuid4()),
             }
             serializer = ReportCreateSerializer(data=data)
-            assert serializer.is_valid(), f"Failed for reason={choice_value}: {serializer.errors}"
+            assert serializer.is_valid(), (
+                f"Failed for reason={choice_value}: {serializer.errors}"
+            )
 
     def test_all_content_type_models_accepted(self):
         """All allowed content_type_model values are accepted."""
+
         for model_value in ["post", "prayer", "comment", "user"]:
             data = {
                 "reason": "spam",
@@ -448,7 +418,9 @@ class TestReportCreateSerializer:
                 "object_id": str(uuid.uuid4()),
             }
             serializer = ReportCreateSerializer(data=data)
-            assert serializer.is_valid(), f"Failed for model={model_value}: {serializer.errors}"
+            assert serializer.is_valid(), (
+                f"Failed for model={model_value}: {serializer.errors}"
+            )
 
     def test_invalid_reason_rejected(self):
         """Invalid reason is rejected."""

@@ -1,6 +1,5 @@
 from django.conf import settings
 from django.db import models
-
 from apps.common.models import CreatedAtModel, TimeStampedModel
 
 
@@ -25,6 +24,7 @@ class Notification(CreatedAtModel):
         on_delete=models.CASCADE,
         related_name="notifications",
     )
+
     sender = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -33,10 +33,12 @@ class Notification(CreatedAtModel):
         related_name="notifications_sent",
         help_text="Null for system-generated notifications.",
     )
+
     notification_type = models.CharField(
         max_length=20,
         choices=NotificationType.choices,
     )
+
     title = models.CharField(max_length=255)
     body = models.TextField()
     data = models.JSONField(
@@ -44,6 +46,7 @@ class Notification(CreatedAtModel):
         blank=True,
         help_text="Deep link and contextual data (e.g., post_id, conversation_id).",
     )
+
     is_read = models.BooleanField(default=False, db_index=True)
 
     class Meta:
@@ -56,7 +59,7 @@ class Notification(CreatedAtModel):
             models.Index(fields=["notification_type"]),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.notification_type} for {self.recipient.full_name}: {self.title}"
 
 
@@ -72,6 +75,7 @@ class DevicePushToken(TimeStampedModel):
         on_delete=models.CASCADE,
         related_name="push_tokens",
     )
+
     token = models.TextField(unique=True)
     platform = models.CharField(max_length=10, choices=Platform.choices)
     is_active = models.BooleanField(default=True, db_index=True)
@@ -84,5 +88,5 @@ class DevicePushToken(TimeStampedModel):
             models.Index(fields=["user", "is_active"]),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"Token for {self.user.full_name} ({self.platform})"

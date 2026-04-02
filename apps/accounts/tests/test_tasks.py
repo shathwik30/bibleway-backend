@@ -1,10 +1,7 @@
 from __future__ import annotations
-
 import datetime
-
 import pytest
 from django.utils import timezone
-
 from apps.accounts.models import OTPToken
 from apps.accounts.tasks import cleanup_expired_otps
 from conftest import OTPTokenFactory
@@ -21,9 +18,7 @@ class TestCleanupExpiredOtpsTask:
             used=False,
             expires_at=timezone.now() + datetime.timedelta(minutes=5),
         )
-
         deleted_count = cleanup_expired_otps()
-
         assert deleted_count == 1
         assert not OTPToken.objects.filter(pk=expired_used.pk).exists()
         assert OTPToken.objects.filter(pk=fresh_unused.pk).exists()
@@ -37,9 +32,7 @@ class TestCleanupExpiredOtpsTask:
             used=False,
             expires_at=timezone.now() - datetime.timedelta(hours=2),
         )
-
         deleted_count = cleanup_expired_otps()
-
         assert deleted_count == 1
         assert not OTPToken.objects.filter(pk=stale_unused.pk).exists()
         assert OTPToken.objects.filter(pk=recent_unused.pk).exists()

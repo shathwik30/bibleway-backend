@@ -1,33 +1,25 @@
 """Tests for apps.common.pagination — StandardPageNumberPagination and FeedCursorPagination."""
 
 from __future__ import annotations
-
 import pytest
 from django.test import RequestFactory
 from rest_framework.request import Request
-
 from apps.common.pagination import FeedCursorPagination, StandardPageNumberPagination
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 rf = RequestFactory()
 
 
 def _drf_request(path="/test/", method="get", query_params=None):
     """Build a DRF Request from a Django request factory."""
+
     url = path
+
     if query_params:
         url += "?" + "&".join(f"{k}={v}" for k, v in query_params.items())
+
     django_request = rf.get(url)
+
     return Request(django_request)
-
-
-# ---------------------------------------------------------------------------
-# StandardPageNumberPagination
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
@@ -36,22 +28,16 @@ class TestStandardPageNumberPagination:
         """Paginated response should have the expected envelope keys."""
         from conftest import PostFactory
 
-        # Create enough items to fill a page
         [PostFactory(author=user) for _ in range(3)]
-
         from apps.social.models import Post
 
         paginator = StandardPageNumberPagination()
         paginator.page_size = 20
-
         request = _drf_request("/api/v1/social/posts/")
         qs = Post.objects.all()
         page = paginator.paginate_queryset(qs, request)
-
-        # Simulate serialized data
         serialized_data = [{"id": str(p.pk)} for p in page]
         response = paginator.get_paginated_response(serialized_data)
-
         assert response.data["message"] == "Success"
         data = response.data["data"]
         assert "count" in data
@@ -81,7 +67,6 @@ class TestStandardPageNumberPagination:
         from conftest import PostFactory
 
         PostFactory(author=user)
-
         from apps.social.models import Post
 
         paginator = StandardPageNumberPagination()
@@ -105,7 +90,7 @@ class TestStandardPageNumberPagination:
         qs = Post.objects.all()
         page = paginator.paginate_queryset(qs, request)
         response = paginator.get_paginated_response([{"id": str(p.pk)} for p in page])
-        assert response.data["data"]["total_pages"] == 3  # 25/10 = 2.5 -> 3
+        assert response.data["data"]["total_pages"] == 3
 
     def test_next_link_present_when_more_pages(self, user):
         from conftest import PostFactory
@@ -127,7 +112,6 @@ class TestStandardPageNumberPagination:
         from conftest import PostFactory
 
         PostFactory(author=user)
-
         from apps.social.models import Post
 
         paginator = StandardPageNumberPagination()
@@ -141,7 +125,6 @@ class TestStandardPageNumberPagination:
         from conftest import PostFactory
 
         PostFactory(author=user)
-
         from apps.social.models import Post
 
         paginator = StandardPageNumberPagination()
@@ -153,18 +136,12 @@ class TestStandardPageNumberPagination:
         assert response.data["data"]["results"] == serialized
 
 
-# ---------------------------------------------------------------------------
-# FeedCursorPagination
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.django_db
 class TestFeedCursorPagination:
     def test_envelope_structure(self, user):
         from conftest import PostFactory
 
         PostFactory(author=user)
-
         from apps.social.models import Post
 
         paginator = FeedCursorPagination()
@@ -173,7 +150,6 @@ class TestFeedCursorPagination:
         qs = Post.objects.all()
         page = paginator.paginate_queryset(qs, request)
         response = paginator.get_paginated_response([{"id": str(p.pk)} for p in page])
-
         assert response.data["message"] == "Success"
         data = response.data["data"]
         assert "next" in data
@@ -185,7 +161,6 @@ class TestFeedCursorPagination:
         from conftest import PostFactory
 
         PostFactory(author=user)
-
         from apps.social.models import Post
 
         paginator = FeedCursorPagination()
@@ -202,7 +177,6 @@ class TestFeedCursorPagination:
         from conftest import PostFactory
 
         PostFactory(author=user)
-
         from apps.social.models import Post
 
         paginator = FeedCursorPagination()

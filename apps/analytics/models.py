@@ -2,7 +2,6 @@ from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
-
 from apps.common.models import CreatedAtModel
 from apps.social.models import Post
 
@@ -19,7 +18,9 @@ class PostView(CreatedAtModel):
         on_delete=models.CASCADE,
         limit_choices_to=models.Q(app_label="social", model__in=["post", "prayer"]),
     )
+
     object_id = models.UUIDField()
+
     content_object = GenericForeignKey("content_type", "object_id")
 
     viewer = models.ForeignKey(
@@ -29,6 +30,7 @@ class PostView(CreatedAtModel):
         blank=True,
         related_name="post_views",
     )
+
     view_type = models.CharField(
         max_length=10,
         choices=ViewType.choices,
@@ -46,9 +48,48 @@ class PostView(CreatedAtModel):
             models.Index(fields=["viewer", "content_type", "object_id", "created_at"]),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         viewer_name = self.viewer.full_name if self.viewer else "Anonymous"
+
         return f"View by {viewer_name} on {self.content_type.model}"
+
+
+class PostViewDailySummary(models.Model):
+    """Aggregated daily summary of PostView records.
+
+    Raw PostView rows older than 30 days are rolled up into these
+    summaries by the ``archive_old_post_views`` Celery task, then purged.
+    """
+
+    content_type = models.ForeignKey(
+        ContentType,
+        on_delete=models.CASCADE,
+    )
+
+    object_id = models.UUIDField()
+    summary_date = models.DateField()
+    view_count = models.PositiveIntegerField(default=0)
+    share_count = models.PositiveIntegerField(default=0)
+    unique_viewers = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = "post view daily summary"
+        verbose_name_plural = "post view daily summaries"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["content_type", "object_id", "summary_date"],
+                name="unique_view_summary_per_content_per_day",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["content_type", "object_id", "summary_date"]),
+            models.Index(fields=["summary_date"]),
+        ]
+
+    def __str__(self) -> str:
+        return (
+            f"Summary {self.summary_date}: {self.content_type.model} {self.object_id}"
+        )
 
 
 class PostBoost(CreatedAtModel):
@@ -63,15 +104,18 @@ class PostBoost(CreatedAtModel):
         on_delete=models.CASCADE,
         related_name="boosts",
     )
+
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="post_boosts",
     )
+
     tier = models.CharField(
         max_length=50,
         help_text="Maps to the IAP product ID for the boost tier.",
     )
+
     platform = models.CharField(max_length=10, choices=Platform.choices)
     transaction_id = models.CharField(max_length=255, unique=True, db_index=True)
     duration_days = models.PositiveSmallIntegerField()
@@ -89,7 +133,7 @@ class PostBoost(CreatedAtModel):
             models.Index(fields=["is_active", "expires_at"]),
         ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"Boost on Post {self.post_id} by {self.user.full_name} ({self.tier})"
 
 
@@ -101,6 +145,7 @@ class BoostAnalyticSnapshot(CreatedAtModel):
         on_delete=models.CASCADE,
         related_name="analytics_snapshots",
     )
+
     impressions = models.PositiveIntegerField(default=0)
     reach = models.PositiveIntegerField(default=0)
     engagement_rate = models.DecimalField(
@@ -109,6 +154,7 @@ class BoostAnalyticSnapshot(CreatedAtModel):
         default=0.00,
         help_text="Engagement rate as a percentage (e.g., 3.50 = 3.5%).",
     )
+
     link_clicks = models.PositiveIntegerField(default=0)
     profile_visits = models.PositiveIntegerField(default=0)
     snapshot_date = models.DateField(db_index=True)
@@ -123,6 +169,9 @@ class BoostAnalyticSnapshot(CreatedAtModel):
                 name="unique_snapshot_per_boost_per_day",
             ),
         ]
+        indexes = [
+            models.Index(fields=["boost", "-snapshot_date"]),
+        ]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"Snapshot for Boost {self.boost_id} on {self.snapshot_date}"

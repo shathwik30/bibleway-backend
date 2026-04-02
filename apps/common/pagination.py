@@ -1,8 +1,6 @@
 from __future__ import annotations
-
 from collections import OrderedDict
 from typing import Any
-
 from rest_framework.pagination import CursorPagination, PageNumberPagination
 from rest_framework.response import Response
 
@@ -11,7 +9,9 @@ class StandardPageNumberPagination(PageNumberPagination):
     """Standard page-based pagination for list endpoints."""
 
     page_size: int = 20
+
     page_size_query_param: str = "page_size"
+
     max_page_size: int = 100
 
     def get_paginated_response(self, data: list[Any]) -> Response:
@@ -36,7 +36,9 @@ class FeedCursorPagination(CursorPagination):
     """Cursor-based pagination for feed endpoints (Posts, Prayers)."""
 
     page_size: int = 20
+
     ordering: str = "-created_at"
+
     cursor_query_param: str = "cursor"
 
     def get_paginated_response(self, data: list[Any]) -> Response:

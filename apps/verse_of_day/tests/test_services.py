@@ -1,25 +1,18 @@
 """Tests for apps.verse_of_day.services — VerseOfDayService."""
 
 from __future__ import annotations
-
 import datetime
-
 import pytest
 from django.utils import timezone
-
 from apps.verse_of_day.models import VerseFallbackPool, VerseOfDay
 from apps.verse_of_day.services import VerseOfDayService
-
-
-# ---------------------------------------------------------------------------
-# get_today_verse
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
 class TestGetTodayVerse:
     def setup_method(self):
         from django.core.cache import cache
+
         cache.clear()
         self.service = VerseOfDayService()
 
@@ -28,7 +21,6 @@ class TestGetTodayVerse:
 
         today = timezone.now().date()
         scheduled = VerseOfDayFactory(display_date=today, is_active=True)
-
         result = self.service.get_today_verse()
         assert isinstance(result, VerseOfDay)
         assert result.pk == scheduled.pk
@@ -37,9 +29,7 @@ class TestGetTodayVerse:
     def test_falls_back_when_no_scheduled(self):
         from conftest import VerseFallbackPoolFactory
 
-        # No scheduled verse for today, but fallback pool exists
         VerseFallbackPoolFactory(is_active=True)
-
         result = self.service.get_today_verse()
         assert isinstance(result, VerseFallbackPool)
 
@@ -56,9 +46,7 @@ class TestGetTodayVerse:
         today = timezone.now().date()
         VerseOfDayFactory(display_date=today, is_active=False)
         VerseFallbackPoolFactory(is_active=True)
-
         result = self.service.get_today_verse()
-        # Should fall back since scheduled is inactive
         assert isinstance(result, VerseFallbackPool)
 
     def test_prefers_scheduled_over_fallback(self):
@@ -67,21 +55,16 @@ class TestGetTodayVerse:
         today = timezone.now().date()
         scheduled = VerseOfDayFactory(display_date=today, is_active=True)
         VerseFallbackPoolFactory(is_active=True)
-
         result = self.service.get_today_verse()
         assert isinstance(result, VerseOfDay)
         assert result.pk == scheduled.pk
-
-
-# ---------------------------------------------------------------------------
-# get_verse_by_date
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
 class TestGetVerseByDate:
     def setup_method(self):
         from django.core.cache import cache
+
         cache.clear()
         self.service = VerseOfDayService()
 
@@ -95,7 +78,6 @@ class TestGetVerseByDate:
             bible_reference="Luke 2:11",
             verse_text="For unto you is born...",
         )
-
         result = self.service.get_verse_by_date(target_date=target)
         assert isinstance(result, VerseOfDay)
         assert result.pk == v.pk
@@ -105,7 +87,6 @@ class TestGetVerseByDate:
 
         VerseFallbackPoolFactory(is_active=True)
         target = datetime.date(2025, 6, 15)
-
         result = self.service.get_verse_by_date(target_date=target)
         assert isinstance(result, VerseFallbackPool)
 
@@ -124,16 +105,10 @@ class TestGetVerseByDate:
         VerseFallbackPoolFactory(
             is_active=True, bible_reference="Ps 46:1", verse_text="God is..."
         )
-
         target = datetime.date(2025, 3, 1)
         result1 = self.service.get_verse_by_date(target_date=target)
         result2 = self.service.get_verse_by_date(target_date=target)
         assert result1.pk == result2.pk
-
-
-# ---------------------------------------------------------------------------
-# list_scheduled_verses
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
@@ -147,8 +122,7 @@ class TestListScheduledVerses:
         VerseOfDayFactory(display_date=datetime.date(2025, 1, 1), is_active=True)
         VerseOfDayFactory(display_date=datetime.date(2025, 1, 5), is_active=True)
         VerseOfDayFactory(display_date=datetime.date(2025, 1, 10), is_active=True)
-        VerseOfDayFactory(display_date=datetime.date(2025, 2, 1), is_active=True)  # outside range
-
+        VerseOfDayFactory(display_date=datetime.date(2025, 2, 1), is_active=True)
         results = self.service.list_scheduled_verses(
             start_date=datetime.date(2025, 1, 1),
             end_date=datetime.date(2025, 1, 10),
@@ -160,7 +134,6 @@ class TestListScheduledVerses:
 
         VerseOfDayFactory(display_date=datetime.date(2025, 3, 1), is_active=True)
         VerseOfDayFactory(display_date=datetime.date(2025, 3, 2), is_active=False)
-
         results = self.service.list_scheduled_verses(
             start_date=datetime.date(2025, 3, 1),
             end_date=datetime.date(2025, 3, 2),

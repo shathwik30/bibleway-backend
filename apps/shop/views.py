@@ -1,17 +1,13 @@
 from __future__ import annotations
-
 from typing import Any
 from uuid import UUID
-
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
-
 from apps.common.exceptions import BadRequestError, ForbiddenError
 from apps.common.throttles import PurchaseRateThrottle as PurchaseThrottle
 from apps.common.views import BaseAPIView
-
 from .models import Purchase
 from .serializers import (
     ProductDetailSerializer,
@@ -19,16 +15,15 @@ from .serializers import (
     PurchaseCreateSerializer,
     PurchaseSerializer,
 )
+
 from .services import DownloadService, ProductService, PurchaseService
 
 
-# ---------------------------------------------------------------------------
-# Product views
-# ---------------------------------------------------------------------------
-
-
 class ProductListView(BaseAPIView):
-    """GET /shop/products/ -- list active products with optional ?category= filter."""
+    """GET /shop/products/ -- list active products with optional ?category= filter.
+
+    Supports ETag for 304 Not Modified based on latest product update time.
+    """
 
     permission_classes = [IsAuthenticated]
 
@@ -37,9 +32,27 @@ class ProductListView(BaseAPIView):
         self._product_service = ProductService()
 
     def get(self, request: Request) -> Response:
+        import hashlib
+        from apps.shop.models import Product
+
         category: str | None = request.query_params.get("category")
+        latest = (
+            Product.objects.filter(is_active=True)
+            .order_by("-updated_at")
+            .values_list("updated_at", flat=True)
+            .first()
+        )
+        etag_source = f"{category}:{latest}"
+        etag = hashlib.md5(etag_source.encode()).hexdigest()
+
+        if request.META.get("HTTP_IF_NONE_MATCH") == etag:
+            return Response(status=304)
+
         products = self._product_service.list_active_products(category=category)
-        return self.paginated_response(products, ProductListSerializer, request)
+        resp = self.paginated_response(products, ProductListSerializer, request)
+        resp["ETag"] = etag
+
+        return resp
 
 
 class ProductDetailView(BaseAPIView):
@@ -57,6 +70,7 @@ class ProductDetailView(BaseAPIView):
             product,
             context={"request": request},
         )
+
         return self.success_response(data=serializer.data)
 
 
@@ -71,22 +85,20 @@ class ProductSearchView(BaseAPIView):
 
     def get(self, request: Request) -> Response:
         query: str = request.query_params.get("q", "")
+
         if not query.strip():
             raise BadRequestError(detail="Query parameter 'q' is required.")
 
         products = self._product_service.search_products(query=query)
+
         return self.paginated_response(products, ProductListSerializer, request)
-
-
-# ---------------------------------------------------------------------------
-# Purchase views
-# ---------------------------------------------------------------------------
 
 
 class PurchaseCreateView(BaseAPIView):
     """POST /shop/purchases/ -- verify and record an in-app purchase."""
 
     permission_classes = [IsAuthenticated]
+
     throttle_classes = [PurchaseThrottle]
 
     def __init__(self, **kwargs: Any) -> None:
@@ -97,7 +109,6 @@ class PurchaseCreateView(BaseAPIView):
         serializer = PurchaseCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-
         purchase = self._purchase_service.verify_purchase(
             user_id=request.user.id,
             product_id=data["product_id"],
@@ -105,8 +116,8 @@ class PurchaseCreateView(BaseAPIView):
             receipt_data=data["receipt_data"],
             transaction_id=data["transaction_id"],
         )
-
         out = PurchaseSerializer(purchase)
+
         return self.created_response(
             data=out.data,
             message="Purchase verified successfully.",
@@ -126,12 +137,8 @@ class PurchaseListView(BaseAPIView):
         purchases = self._purchase_service.list_user_purchases(
             user_id=request.user.id,
         )
+
         return self.paginated_response(purchases, PurchaseSerializer, request)
-
-
-# ---------------------------------------------------------------------------
-# Download view
-# ---------------------------------------------------------------------------
 
 
 class DownloadThrottle(UserRateThrottle):
@@ -148,6 +155,7 @@ class DownloadView(BaseAPIView):
     """
 
     permission_classes = [IsAuthenticated]
+
     throttle_classes = [DownloadThrottle]
 
     def __init__(self, **kwargs: Any) -> None:
@@ -157,29 +165,27 @@ class DownloadView(BaseAPIView):
 
     def get(self, request: Request, product_id: UUID) -> Response:
         product = self._product_service.get_product_detail(product_id=product_id)
-
-        # For paid products, verify the user has purchased
         purchase_id: UUID | None = None
+
         if not product.is_free:
             purchase = Purchase.objects.filter(
                 user=request.user,
                 product=product,
                 is_validated=True,
             ).first()
+
             if purchase is None:
                 raise ForbiddenError(
                     detail="You must purchase this product before downloading."
                 )
+
             purchase_id = purchase.pk
 
-        # Record the download
         self._download_service.record_download(
             user_id=request.user.id,
             product_id=product.pk,
             purchase_id=purchase_id,
         )
-
-        # Generate the pre-signed URL
         download_url = DownloadService.generate_download_url(product=product)
 
         return self.success_response(

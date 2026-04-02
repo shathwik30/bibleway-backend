@@ -6,24 +6,46 @@ from django.urls import include, path
 
 def health_check(request):
     """Liveness probe for Railway and uptime monitors."""
+
     from django.core.cache import cache
     from django.db import OperationalError, connection
 
     try:
         with connection.cursor() as cursor:
             cursor.execute("SELECT 1")
+
         db_status = "ok"
+
     except OperationalError:
         db_status = "error"
 
     try:
         cache.set("_health", "1", timeout=5)
         cache_status = "ok" if cache.get("_health") == "1" else "error"
+
     except Exception:
         cache_status = "error"
 
+    try:
+        from config.celery import app as celery_app
+
+        inspect = celery_app.control.inspect(timeout=2.0)
+        ping_result = inspect.ping()
+        celery_status = "ok" if ping_result else "warn"
+
+    except Exception:
+        celery_status = "warn"
+
     overall = "ok" if db_status == "ok" and cache_status == "ok" else "degraded"
-    return JsonResponse({"status": overall, "db": db_status, "cache": cache_status})
+
+    return JsonResponse(
+        {
+            "status": overall,
+            "db": db_status,
+            "cache": cache_status,
+            "celery": celery_status,
+        }
+    )
 
 
 urlpatterns = [
@@ -46,5 +68,6 @@ if settings.DEBUG:
         urlpatterns = [
             path("__debug__/", include(debug_toolbar.urls)),
         ] + urlpatterns
+
     except ImportError:
         pass

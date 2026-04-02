@@ -1,7 +1,5 @@
 from __future__ import annotations
-
 from django.urls import path
-
 from . import views
 
 app_name = "accounts"
@@ -66,6 +64,11 @@ urlpatterns: list = [
         "users/search/",
         views.UserSearchView.as_view(),
         name="user-search",
+    ),
+    path(
+        "users/bulk/",
+        views.BulkUserDetailView.as_view(),
+        name="bulk-user-detail",
     ),
     path(
         "users/<uuid:user_id>/",

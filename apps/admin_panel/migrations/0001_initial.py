@@ -7,7 +7,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
     dependencies = [
@@ -16,55 +15,162 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.CreateModel(
-            name='BoostTier',
+            name="BoostTier",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_at', models.DateTimeField(auto_now_add=True, db_index=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('name', models.CharField(max_length=100)),
-                ('apple_product_id', models.CharField(max_length=100, unique=True)),
-                ('google_product_id', models.CharField(max_length=100, unique=True)),
-                ('duration_days', models.PositiveSmallIntegerField()),
-                ('display_price', models.CharField(help_text="Display string e.g. '$5.00'", max_length=20)),
-                ('is_active', models.BooleanField(db_index=True, default=True)),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True, db_index=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("name", models.CharField(max_length=100)),
+                ("apple_product_id", models.CharField(max_length=100, unique=True)),
+                ("google_product_id", models.CharField(max_length=100, unique=True)),
+                ("duration_days", models.PositiveSmallIntegerField()),
+                (
+                    "display_price",
+                    models.CharField(
+                        help_text="Display string e.g. '$5.00'", max_length=20
+                    ),
+                ),
+                ("is_active", models.BooleanField(db_index=True, default=True)),
             ],
             options={
-                'verbose_name': 'boost tier',
-                'verbose_name_plural': 'boost tiers',
-                'ordering': ['duration_days'],
+                "verbose_name": "boost tier",
+                "verbose_name_plural": "boost tiers",
+                "ordering": ["duration_days"],
             },
         ),
         migrations.CreateModel(
-            name='AdminRole',
+            name="AdminRole",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_at', models.DateTimeField(auto_now_add=True, db_index=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('role', models.CharField(choices=[('super_admin', 'Super Admin'), ('content_admin', 'Content Admin'), ('moderation_admin', 'Moderation Admin')], default='content_admin', max_length=20)),
-                ('user', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='admin_role', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True, db_index=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "role",
+                    models.CharField(
+                        choices=[
+                            ("super_admin", "Super Admin"),
+                            ("content_admin", "Content Admin"),
+                            ("moderation_admin", "Moderation Admin"),
+                        ],
+                        default="content_admin",
+                        max_length=20,
+                    ),
+                ),
+                (
+                    "user",
+                    models.OneToOneField(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="admin_role",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'admin role',
-                'verbose_name_plural': 'admin roles',
+                "verbose_name": "admin role",
+                "verbose_name_plural": "admin roles",
             },
         ),
         migrations.CreateModel(
-            name='AdminLog',
+            name="AdminLog",
             fields=[
-                ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                ('created_at', models.DateTimeField(auto_now_add=True, db_index=True)),
-                ('action', models.CharField(choices=[('create', 'Create'), ('update', 'Update'), ('delete', 'Delete'), ('suspend', 'Suspend'), ('unsuspend', 'Unsuspend'), ('warn', 'Warn'), ('dismiss_report', 'Dismiss Report'), ('remove_content', 'Remove Content'), ('broadcast', 'Broadcast'), ('role_change', 'Role Change')], max_length=30)),
-                ('target_model', models.CharField(help_text="e.g. 'accounts.User', 'social.Post'", max_length=100)),
-                ('target_id', models.CharField(help_text='Primary key of the affected object.', max_length=255)),
-                ('detail', models.TextField(blank=True, default='', help_text='Human-readable description of what was done.')),
-                ('metadata', models.JSONField(blank=True, default=dict, help_text='Snapshot of changed fields or extra context.')),
-                ('admin_user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='admin_logs', to=settings.AUTH_USER_MODEL)),
+                (
+                    "id",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("created_at", models.DateTimeField(auto_now_add=True, db_index=True)),
+                (
+                    "action",
+                    models.CharField(
+                        choices=[
+                            ("create", "Create"),
+                            ("update", "Update"),
+                            ("delete", "Delete"),
+                            ("suspend", "Suspend"),
+                            ("unsuspend", "Unsuspend"),
+                            ("warn", "Warn"),
+                            ("dismiss_report", "Dismiss Report"),
+                            ("remove_content", "Remove Content"),
+                            ("broadcast", "Broadcast"),
+                            ("role_change", "Role Change"),
+                        ],
+                        max_length=30,
+                    ),
+                ),
+                (
+                    "target_model",
+                    models.CharField(
+                        help_text="e.g. 'accounts.User', 'social.Post'", max_length=100
+                    ),
+                ),
+                (
+                    "target_id",
+                    models.CharField(
+                        help_text="Primary key of the affected object.", max_length=255
+                    ),
+                ),
+                (
+                    "detail",
+                    models.TextField(
+                        blank=True,
+                        default="",
+                        help_text="Human-readable description of what was done.",
+                    ),
+                ),
+                (
+                    "metadata",
+                    models.JSONField(
+                        blank=True,
+                        default=dict,
+                        help_text="Snapshot of changed fields or extra context.",
+                    ),
+                ),
+                (
+                    "admin_user",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="admin_logs",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'admin log',
-                'verbose_name_plural': 'admin logs',
-                'ordering': ['-created_at'],
-                'indexes': [models.Index(fields=['admin_user', '-created_at'], name='admin_panel_admin_u_b6e883_idx'), models.Index(fields=['action'], name='admin_panel_action_1cea96_idx'), models.Index(fields=['target_model', 'target_id'], name='admin_panel_target__0ee437_idx')],
+                "verbose_name": "admin log",
+                "verbose_name_plural": "admin logs",
+                "ordering": ["-created_at"],
+                "indexes": [
+                    models.Index(
+                        fields=["admin_user", "-created_at"],
+                        name="admin_panel_admin_u_b6e883_idx",
+                    ),
+                    models.Index(
+                        fields=["action"], name="admin_panel_action_1cea96_idx"
+                    ),
+                    models.Index(
+                        fields=["target_model", "target_id"],
+                        name="admin_panel_target__0ee437_idx",
+                    ),
+                ],
             },
         ),
     ]

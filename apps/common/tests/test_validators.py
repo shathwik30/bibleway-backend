@@ -1,14 +1,11 @@
 """Tests for apps.common.validators — file validation (size, extension, magic bytes, content type)."""
 
 from __future__ import annotations
-
 from io import BytesIO
 from unittest.mock import MagicMock
-
 import pytest
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
-
 from apps.common.validators import (
     _verify_magic_bytes,
     _IMAGE_MAGIC,
@@ -22,11 +19,6 @@ from apps.common.validators import (
 )
 
 
-# ---------------------------------------------------------------------------
-# Helper: create mock uploaded files with magic bytes
-# ---------------------------------------------------------------------------
-
-
 def _make_file(
     name: str,
     magic_bytes: bytes,
@@ -34,50 +26,46 @@ def _make_file(
     content_type: str = "",
 ) -> SimpleUploadedFile:
     """Create a SimpleUploadedFile with specific magic bytes in the header."""
-    # Pad to a minimum header size so magic checks work
+
     content = magic_bytes + b"\x00" * max(0, 16 - len(magic_bytes))
+
     if size is not None:
-        # Pad or truncate to the desired size
         if len(content) < size:
             content = content + b"\x00" * (size - len(content))
+
         else:
             content = content[:size]
+
     f = SimpleUploadedFile(name, content, content_type=content_type)
+
     return f
 
 
-# JPEG starts with \xff\xd8\xff
 JPEG_MAGIC = b"\xff\xd8\xff\xe0"
-# PNG starts with \x89PNG\r\n\x1a\n
+
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
-# WebP starts with RIFF
+
 WEBP_MAGIC = b"RIFF\x00\x00\x00\x00WEBP"
-# MP4 has "ftyp" at offset 4
+
 MP4_MAGIC = b"\x00\x00\x00\x1cftypisom"
-# MOV (same ISO BMFF container)
+
 MOV_MAGIC = b"\x00\x00\x00\x14ftypqt  "
-# MP3 with ID3 tag
+
 MP3_MAGIC = b"ID3\x04\x00\x00\x00\x00\x00\x00"
-# OGG audio
+
 OGG_MAGIC = b"OggS\x00\x02\x00\x00"
-# WAV (RIFF container)
+
 WAV_MAGIC = b"RIFF\x00\x00\x00\x00WAVE"
-
-
-# ---------------------------------------------------------------------------
-# validate_file_size
-# ---------------------------------------------------------------------------
 
 
 class TestValidateFileSize:
     def test_under_limit_passes(self):
         f = _make_file("file.bin", b"\x00", size=1024)
-        # 1 MB limit, file is 1024 bytes — should pass
         validate_file_size(f, max_size_mb=1)
 
     def test_over_limit_raises(self):
-        # 2 MB file against a 1 MB limit
         f = _make_file("file.bin", b"\x00", size=2 * 1024 * 1024 + 1)
+
         with pytest.raises(ValidationError, match="must not exceed 1 MB"):
             validate_file_size(f, max_size_mb=1)
 
@@ -87,15 +75,10 @@ class TestValidateFileSize:
         validate_file_size(f, max_size_mb=5)
 
 
-# ---------------------------------------------------------------------------
-# validate_image_file
-# ---------------------------------------------------------------------------
-
-
 class TestValidateImageFile:
     def test_valid_jpeg(self):
         f = _make_file("photo.jpg", JPEG_MAGIC, content_type="image/jpeg")
-        validate_image_file(f)  # Should not raise
+        validate_image_file(f)
 
     def test_valid_png(self):
         f = _make_file("image.png", PNG_MAGIC, content_type="image/png")
@@ -107,16 +90,19 @@ class TestValidateImageFile:
 
     def test_bad_extension_raises(self):
         f = _make_file("image.bmp", JPEG_MAGIC, content_type="image/jpeg")
+
         with pytest.raises(ValidationError, match="Unsupported image format"):
             validate_image_file(f)
 
     def test_bad_magic_bytes_raises(self):
         f = _make_file("image.jpg", b"\x00\x00\x00\x00", content_type="image/jpeg")
+
         with pytest.raises(ValidationError, match="does not match a valid image"):
             validate_image_file(f)
 
     def test_bad_content_type_raises(self):
         f = _make_file("photo.jpg", JPEG_MAGIC, content_type="application/pdf")
+
         with pytest.raises(ValidationError, match="Invalid image content type"):
             validate_image_file(f)
 
@@ -124,6 +110,7 @@ class TestValidateImageFile:
         f = _make_file(
             "photo.jpg", JPEG_MAGIC, size=11 * 1024 * 1024, content_type="image/jpeg"
         )
+
         with pytest.raises(ValidationError, match="must not exceed 10 MB"):
             validate_image_file(f)
 
@@ -131,11 +118,6 @@ class TestValidateImageFile:
         """When content_type is empty, only extension and magic are checked."""
         f = _make_file("photo.jpg", JPEG_MAGIC, content_type="")
         validate_image_file(f)
-
-
-# ---------------------------------------------------------------------------
-# validate_video_file
-# ---------------------------------------------------------------------------
 
 
 class TestValidateVideoFile:
@@ -149,16 +131,21 @@ class TestValidateVideoFile:
 
     def test_bad_extension_raises(self):
         f = _make_file("clip.avi", MP4_MAGIC, content_type="video/mp4")
+
         with pytest.raises(ValidationError, match="Unsupported video format"):
             validate_video_file(f)
 
     def test_bad_magic_raises(self):
-        f = _make_file("clip.mp4", b"\xff\xff\xff\xff\xff\xff", content_type="video/mp4")
+        f = _make_file(
+            "clip.mp4", b"\xff\xff\xff\xff\xff\xff", content_type="video/mp4"
+        )
+
         with pytest.raises(ValidationError, match="does not match a valid video"):
             validate_video_file(f)
 
     def test_bad_content_type_raises(self):
         f = _make_file("clip.mp4", MP4_MAGIC, content_type="video/avi")
+
         with pytest.raises(ValidationError, match="Invalid video content type"):
             validate_video_file(f)
 
@@ -166,13 +153,9 @@ class TestValidateVideoFile:
         f = _make_file(
             "clip.mp4", MP4_MAGIC, size=101 * 1024 * 1024, content_type="video/mp4"
         )
+
         with pytest.raises(ValidationError, match="must not exceed 100 MB"):
             validate_video_file(f)
-
-
-# ---------------------------------------------------------------------------
-# validate_voice_note_file
-# ---------------------------------------------------------------------------
 
 
 class TestValidateVoiceNoteFile:
@@ -194,6 +177,7 @@ class TestValidateVoiceNoteFile:
 
     def test_bad_extension_raises(self):
         f = _make_file("note.flac", MP3_MAGIC, content_type="audio/mpeg")
+
         with pytest.raises(ValidationError, match="Unsupported audio format"):
             validate_voice_note_file(f)
 
@@ -201,23 +185,21 @@ class TestValidateVoiceNoteFile:
         f = _make_file(
             "note.mp3", MP3_MAGIC, size=6 * 1024 * 1024, content_type="audio/mpeg"
         )
+
         with pytest.raises(ValidationError, match="must not exceed 5 MB"):
             validate_voice_note_file(f)
 
     def test_bad_magic_raises(self):
         f = _make_file("note.mp3", b"\x00\x00\x00\x00", content_type="audio/mpeg")
+
         with pytest.raises(ValidationError, match="does not match a valid audio"):
             validate_voice_note_file(f)
 
     def test_bad_content_type_raises(self):
         f = _make_file("note.mp3", MP3_MAGIC, content_type="video/mp4")
+
         with pytest.raises(ValidationError, match="Invalid audio content type"):
             validate_voice_note_file(f)
-
-
-# ---------------------------------------------------------------------------
-# validate_bio_length
-# ---------------------------------------------------------------------------
 
 
 class TestValidateBioLength:
@@ -233,11 +215,6 @@ class TestValidateBioLength:
 
     def test_empty_passes(self):
         validate_bio_length("")
-
-
-# ---------------------------------------------------------------------------
-# _verify_magic_bytes with mock files
-# ---------------------------------------------------------------------------
 
 
 class TestVerifyMagicBytes:

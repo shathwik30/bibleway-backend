@@ -1,15 +1,11 @@
 from __future__ import annotations
-
 from typing import Any
 from uuid import UUID
-
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
-
 from apps.common.throttles import DeviceTokenRateThrottle
 from apps.common.views import BaseAPIView
-
 from .serializers import (
     DeviceTokenDeregisterSerializer,
     DeviceTokenRegisterSerializer,
@@ -17,12 +13,8 @@ from .serializers import (
     NotificationListSerializer,
     NotificationSerializer,
 )
+
 from .services import DevicePushTokenService, NotificationService
-
-
-# ---------------------------------------------------------------------------
-# Notification views
-# ---------------------------------------------------------------------------
 
 
 class NotificationListView(BaseAPIView):
@@ -38,7 +30,10 @@ class NotificationListView(BaseAPIView):
         notifications = self._notification_service.list_user_notifications(
             user_id=request.user.id,
         )
-        return self.paginated_response(notifications, NotificationListSerializer, request)
+
+        return self.paginated_response(
+            notifications, NotificationListSerializer, request
+        )
 
 
 class NotificationMarkReadView(BaseAPIView):
@@ -53,7 +48,6 @@ class NotificationMarkReadView(BaseAPIView):
     def post(self, request: Request) -> Response:
         serializer = MarkReadSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
         notification_id: UUID | None = serializer.validated_data.get("notification_id")
 
         if notification_id is not None:
@@ -62,6 +56,7 @@ class NotificationMarkReadView(BaseAPIView):
                 notification_id=notification_id,
             )
             out = NotificationSerializer(notification)
+
             return self.success_response(
                 data=out.data,
                 message="Notification marked as read.",
@@ -70,6 +65,7 @@ class NotificationMarkReadView(BaseAPIView):
         count = self._notification_service.mark_all_as_read(
             user_id=request.user.id,
         )
+
         return self.success_response(
             data={"updated_count": count},
             message="All notifications marked as read.",
@@ -89,6 +85,7 @@ class NotificationUnreadCountView(BaseAPIView):
         count = self._notification_service.get_unread_count(
             user_id=request.user.id,
         )
+
         return self.success_response(data={"unread_count": count})
 
 
@@ -106,18 +103,15 @@ class NotificationDeleteView(BaseAPIView):
             user_id=request.user.id,
             notification_id=pk,
         )
+
         return self.no_content_response()
-
-
-# ---------------------------------------------------------------------------
-# Device push token views
-# ---------------------------------------------------------------------------
 
 
 class DeviceTokenRegisterView(BaseAPIView):
     """POST /notifications/device-tokens/ -- register or update a push token."""
 
     permission_classes = [IsAuthenticated]
+
     throttle_classes = [DeviceTokenRateThrottle]
 
     def __init__(self, **kwargs: Any) -> None:
@@ -128,7 +122,6 @@ class DeviceTokenRegisterView(BaseAPIView):
         serializer = DeviceTokenRegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-
         device_token = self._token_service.register_token(
             user_id=request.user.id,
             token=data["token"],
@@ -161,7 +154,6 @@ class DeviceTokenDeregisterView(BaseAPIView):
     def post(self, request: Request) -> Response:
         serializer = DeviceTokenDeregisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-
         self._token_service.deactivate_token(
             user_id=request.user.id,
             token=serializer.validated_data["token"],
