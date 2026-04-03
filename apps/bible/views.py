@@ -210,7 +210,7 @@ class BookmarkViewSet(BaseModelViewSet):
         super().__init__(**kwargs)
         self.service = BookmarkService()
 
-    def get_queryset(self):  # type: ignore[override]
+    def get_queryset(self):
 
         return self.service.list_bookmarks(
             self.request.user.id,
@@ -259,7 +259,7 @@ class HighlightViewSet(BaseModelViewSet):
         super().__init__(**kwargs)
         self.service = HighlightService()
 
-    def get_queryset(self):  # type: ignore[override]
+    def get_queryset(self):
 
         qs_params = self.request.query_params
         content_type_id: str | None = qs_params.get("content_type")
@@ -323,7 +323,7 @@ class NoteViewSet(BaseModelViewSet):
         super().__init__(**kwargs)
         self.service = NoteService()
 
-    def get_queryset(self):  # type: ignore[override]
+    def get_queryset(self):
 
         qs_params = self.request.query_params
         content_type_id: str | None = qs_params.get("content_type")

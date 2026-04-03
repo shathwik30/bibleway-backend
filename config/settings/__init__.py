@@ -7,7 +7,7 @@ _module = os.environ.get("DJANGO_SETTINGS_MODULE", "")
 
 if _module == "config.settings" or not _module:
     if _env == "prod":
-        from .prod import *  # noqa: F401, F403
+        from .prod import *
 
     else:
-        from .dev import *  # noqa: F401, F403
+        from .dev import *

@@ -56,9 +56,7 @@ class TestDictDetail:
         response = custom_exception_handler(exc, _make_context())
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert response.data["message"] == "This field is required."
-        assert response.data["data"] == {
-            "email": ["This field is required."]
-        }
+        assert response.data["data"] == {"email": ["This field is required."]}
 
     def test_dict_detail_single_string(self):
         exc = ValidationError(detail={"name": "Too long."})
@@ -151,9 +149,9 @@ class TestErrorEnvelopeFieldDetails:
         )
         response = custom_exception_handler(exc, _make_context())
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        # message should be the first error from the first field
+
         assert response.data["message"] == "This field is required."
-        # data should contain the full field-level errors
+
         assert response.data["data"] is not None
         assert "email" in response.data["data"]
         assert "password" in response.data["data"]

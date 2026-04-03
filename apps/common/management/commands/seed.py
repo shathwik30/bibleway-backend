@@ -319,9 +319,9 @@ class Command(BaseCommand):
                 title=title,
                 content=content,
                 order=i % 2,
-                youtube_url="https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-                if i == 0
-                else "",
+                youtube_url=(
+                    "https://www.youtube.com/watch?v=dQw4w9WgXcQ" if i == 0 else ""
+                ),
             )
             pages.append(p)
 

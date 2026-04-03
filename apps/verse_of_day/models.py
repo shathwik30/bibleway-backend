@@ -7,7 +7,9 @@ def verse_background_upload_path(instance: "VerseOfDay", filename: str) -> str:
     return f"verse_of_day/{instance.display_date}/{filename}"
 
 
-def fallback_background_upload_path(instance: "VerseFallbackPool", filename: str) -> str:
+def fallback_background_upload_path(
+    instance: "VerseFallbackPool", filename: str
+) -> str:
     return f"verse_of_day/fallback_pool/{instance.id}/{filename}"
 
 

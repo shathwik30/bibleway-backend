@@ -71,11 +71,11 @@ class PostViewSet(FeedViewSet):
         self._reaction_service = ReactionService()
         self._comment_service = CommentService()
 
-    def get_queryset(self) -> QuerySet[Post]:  # type: ignore[override]
+    def get_queryset(self) -> QuerySet[Post]:
 
         return self._post_service.get_feed(requesting_user=self.request.user)
 
-    def get_serializer_class(self) -> type[BaseSerializer]:  # type: ignore[override]
+    def get_serializer_class(self) -> type[BaseSerializer]:
 
         if self.action == "create":
             return PostCreateSerializer
@@ -262,11 +262,11 @@ class PrayerViewSet(FeedViewSet):
         self._reaction_service = ReactionService()
         self._comment_service = CommentService()
 
-    def get_queryset(self) -> QuerySet[Prayer]:  # type: ignore[override]
+    def get_queryset(self) -> QuerySet[Prayer]:
 
         return self._prayer_service.get_feed(requesting_user=self.request.user)
 
-    def get_serializer_class(self) -> type[BaseSerializer]:  # type: ignore[override]
+    def get_serializer_class(self) -> type[BaseSerializer]:
 
         if self.action == "create":
             return PrayerCreateSerializer
@@ -449,7 +449,7 @@ class CommentViewSet(BaseModelViewSet):
         super().__init__(**kwargs)
         self._comment_service = CommentService()
 
-    def get_queryset(self) -> QuerySet[Comment]:  # type: ignore[override]
+    def get_queryset(self) -> QuerySet[Comment]:
 
         content_type_model = self.request.query_params.get("content_type_model", "post")
         object_id = self.request.query_params.get("object_id")
@@ -462,7 +462,7 @@ class CommentViewSet(BaseModelViewSet):
 
         return self._comment_service.get_queryset()
 
-    def get_serializer_class(self) -> type[BaseSerializer]:  # type: ignore[override]
+    def get_serializer_class(self) -> type[BaseSerializer]:
 
         if self.action == "create":
             return CommentCreateSerializer
@@ -507,7 +507,7 @@ class ReplyViewSet(BaseModelViewSet):
         super().__init__(**kwargs)
         self._reply_service = ReplyService()
 
-    def get_queryset(self) -> QuerySet[Reply]:  # type: ignore[override]
+    def get_queryset(self) -> QuerySet[Reply]:
 
         comment_pk = self.kwargs.get("comment_pk")
 
@@ -518,7 +518,7 @@ class ReplyViewSet(BaseModelViewSet):
 
         return self._reply_service.get_queryset()
 
-    def get_serializer_class(self) -> type[BaseSerializer]:  # type: ignore[override]
+    def get_serializer_class(self) -> type[BaseSerializer]:
 
         if self.action == "create":
             return ReplyCreateSerializer

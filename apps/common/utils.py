@@ -128,7 +128,9 @@ def get_blocked_user_ids(user_id: UUID) -> set[UUID]:
     return result
 
 
-def invalidate_blocked_user_cache(user_id: UUID, other_user_id: UUID | None = None) -> None:
+def invalidate_blocked_user_cache(
+    user_id: UUID, other_user_id: UUID | None = None
+) -> None:
     """Invalidate the blocked-user cache for both sides of a block relationship.
 
     Call this from BlockRelationship signals on create/delete.

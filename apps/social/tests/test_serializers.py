@@ -245,9 +245,9 @@ class TestReactionCreateSerializer:
                 "object_id": str(uuid.uuid4()),
             }
             serializer = ReactionCreateSerializer(data=data)
-            assert serializer.is_valid(), (
-                f"Failed for emoji_type={choice_value}: {serializer.errors}"
-            )
+            assert (
+                serializer.is_valid()
+            ), f"Failed for emoji_type={choice_value}: {serializer.errors}"
 
     def test_invalid_emoji_type_rejected(self):
         """An unknown emoji type is rejected."""
@@ -404,9 +404,9 @@ class TestReportCreateSerializer:
                 "object_id": str(uuid.uuid4()),
             }
             serializer = ReportCreateSerializer(data=data)
-            assert serializer.is_valid(), (
-                f"Failed for reason={choice_value}: {serializer.errors}"
-            )
+            assert (
+                serializer.is_valid()
+            ), f"Failed for reason={choice_value}: {serializer.errors}"
 
     def test_all_content_type_models_accepted(self):
         """All allowed content_type_model values are accepted."""
@@ -418,9 +418,9 @@ class TestReportCreateSerializer:
                 "object_id": str(uuid.uuid4()),
             }
             serializer = ReportCreateSerializer(data=data)
-            assert serializer.is_valid(), (
-                f"Failed for model={model_value}: {serializer.errors}"
-            )
+            assert (
+                serializer.is_valid()
+            ), f"Failed for model={model_value}: {serializer.errors}"
 
     def test_invalid_reason_rejected(self):
         """Invalid reason is rejected."""

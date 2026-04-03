@@ -969,10 +969,9 @@ class TestBulkPostDetailView:
 
         factory = APIRequestFactory()
         request = factory.post("/posts/bulk/", data, format="json")
-        # Extract user from auth_client's credentials
+
         from rest_framework.test import force_authenticate
 
-        # Get user from the fixture (auth_client stores credentials)
         return request, BulkPostDetailView
 
     def test_bulk_returns_posts(self, user):

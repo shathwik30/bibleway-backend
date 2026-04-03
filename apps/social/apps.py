@@ -9,4 +9,4 @@ class SocialConfig(AppConfig):
     verbose_name = "Social"
 
     def ready(self) -> None:
-        import apps.social.signals  # noqa: F401
+        import apps.social.signals

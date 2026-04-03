@@ -285,7 +285,7 @@ class TestGetBlockedUserIds:
             get_blocked_user_ids(user.id)
             mock_set.assert_called_once()
             call_kwargs = mock_set.call_args
-            # cache.set(key, result, timeout=CACHE_TIMEOUT_BLOCKED_USERS)
+
             timeout_used = call_kwargs[1].get(
                 "timeout", call_kwargs[0][2] if len(call_kwargs[0]) > 2 else None
             )
@@ -305,7 +305,7 @@ class TestSendNotificationSafe:
             "apps.notifications.services.NotificationService.create_notification",
             side_effect=Exception("Firebase is down"),
         ):
-            # Should NOT raise
+
             send_notification_safe(
                 recipient_id=user.id,
                 sender_id=None,

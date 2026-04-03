@@ -254,7 +254,9 @@ def _setup_google_mock(api_result, settings):
 
     mock_service = MagicMock()
 
-    mock_service.purchases.return_value.products.return_value.get.return_value.execute.return_value = api_result
+    mock_service.purchases.return_value.products.return_value.get.return_value.execute.return_value = (
+        api_result
+    )
 
     mock_build_fn.return_value = mock_service
 

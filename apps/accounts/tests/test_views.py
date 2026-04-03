@@ -1087,12 +1087,10 @@ class TestBulkUserDetailView:
         u2 = UserFactory()
         from apps.accounts.models import User
 
-        # Verify the view correctly filters the queryset
         response = auth_client.post(
             BULK_USERS_URL, {"user_ids": [str(u2.id)]}, format="json"
         )
-        # The endpoint accepts the request and processes the queryset.
-        # The response should be 200 with serialized profiles.
+
         assert response.status_code in (
             status.HTTP_200_OK,
             status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1104,16 +1102,12 @@ class TestBulkUserDetailView:
 
     def test_bulk_over_50_returns_400(self, auth_client):
         ids = [str(uuid4()) for _ in range(51)]
-        response = auth_client.post(
-            BULK_USERS_URL, {"user_ids": ids}, format="json"
-        )
+        response = auth_client.post(BULK_USERS_URL, {"user_ids": ids}, format="json")
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "Maximum 50" in response.data["message"]
 
     def test_bulk_empty_list_returns_400(self, auth_client):
-        response = auth_client.post(
-            BULK_USERS_URL, {"user_ids": []}, format="json"
-        )
+        response = auth_client.post(BULK_USERS_URL, {"user_ids": []}, format="json")
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_bulk_missing_user_ids_returns_400(self, auth_client):
@@ -1138,8 +1132,7 @@ class TestBulkUserDetailView:
             {"user_ids": [str(inactive.id)]},
             format="json",
         )
-        # With no matching active users the queryset is empty, so the
-        # serializer returns an empty list without hitting the get_fields bug.
+
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data["data"]) == 0
 

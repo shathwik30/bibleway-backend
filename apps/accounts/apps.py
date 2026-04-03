@@ -9,4 +9,4 @@ class AccountsConfig(AppConfig):
     verbose_name = "Accounts"
 
     def ready(self) -> None:
-        import apps.accounts.signals  # noqa: F401
+        import apps.accounts.signals

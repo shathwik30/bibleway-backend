@@ -33,7 +33,7 @@ class TestArchiveOldPostViews:
             viewer=viewer,
             view_type=view_type,
         )
-        # Manually set created_at to the past (bypass auto_now_add via update)
+
         old_date = timezone.now() - timedelta(days=days_old)
         PostView.objects.filter(pk=pv.pk).update(created_at=old_date)
         return pv
@@ -42,7 +42,7 @@ class TestArchiveOldPostViews:
         """Old views should be aggregated into PostViewDailySummary records."""
         post = PostFactory()
         viewer = UserFactory()
-        # Create several old views (older than 30 days)
+
         self._create_old_view(post, viewer=viewer, days_old=35, view_type="view")
         self._create_old_view(post, viewer=viewer, days_old=35, view_type="view")
         self._create_old_view(post, viewer=viewer, days_old=35, view_type="share")
@@ -50,7 +50,6 @@ class TestArchiveOldPostViews:
         result = archive_old_post_views(retention_days=30)
         assert result["summaries"] >= 1
 
-        # Verify summary was created
         ct = ContentType.objects.get_for_model(Post)
         summaries = PostViewDailySummary.objects.filter(
             content_type=ct, object_id=post.pk
@@ -63,10 +62,10 @@ class TestArchiveOldPostViews:
     def test_archive_purges_old_raw_rows(self):
         """After archiving, raw PostView records older than retention_days are deleted."""
         post = PostFactory()
-        # Create old views
+
         self._create_old_view(post, days_old=35)
         self._create_old_view(post, days_old=35)
-        # Create a recent view (should NOT be purged)
+
         ct = ContentType.objects.get_for_model(Post)
         PostView.objects.create(
             content_type=ct,
@@ -78,12 +77,12 @@ class TestArchiveOldPostViews:
         assert PostView.objects.count() == 3
         result = archive_old_post_views(retention_days=30)
         assert result["purged"] == 2
-        # Only the recent view should remain
+
         assert PostView.objects.count() == 1
 
     def test_archive_with_no_old_views_returns_zero(self):
         """When there are no old views, the task should return 0 summaries and 0 purged."""
-        # Create only recent views
+
         post = PostFactory()
         ct = ContentType.objects.get_for_model(Post)
         PostView.objects.create(
@@ -96,7 +95,7 @@ class TestArchiveOldPostViews:
         result = archive_old_post_views(retention_days=30)
         assert result["summaries"] == 0
         assert result["purged"] == 0
-        # Recent view should still exist
+
         assert PostView.objects.count() == 1
 
     def test_archive_no_views_at_all_returns_zero(self):
@@ -136,7 +135,5 @@ class TestArchiveOldPostViews:
         archive_old_post_views(retention_days=30)
 
         ct = ContentType.objects.get_for_model(Post)
-        summary = PostViewDailySummary.objects.get(
-            content_type=ct, object_id=post.pk
-        )
+        summary = PostViewDailySummary.objects.get(content_type=ct, object_id=post.pk)
         assert summary.unique_viewers == 2

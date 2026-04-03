@@ -9,4 +9,4 @@ class BibleConfig(AppConfig):
     verbose_name = "Bible"
 
     def ready(self) -> None:
-        import apps.bible.signals  # noqa: F401
+        import apps.bible.signals

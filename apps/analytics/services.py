@@ -31,7 +31,7 @@ try:
 
     VIEWABLE_MODELS["prayer"] = Prayer
 
-except ImportError:  # pragma: no cover
+except ImportError:
     pass
 
 

@@ -81,9 +81,7 @@ def increment_post_count(
 
 
 @receiver(post_delete, sender=Post)
-def decrement_post_count(
-    sender: type[Post], instance: Post, **kwargs: Any
-) -> None:
+def decrement_post_count(sender: type[Post], instance: Post, **kwargs: Any) -> None:
     from apps.accounts.models import User
 
     User.objects.filter(pk=instance.author_id).update(post_count=F("post_count") - 1)

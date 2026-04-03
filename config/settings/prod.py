@@ -1,4 +1,4 @@
-from .base import *  # noqa: F401, F403
+from .base import *
 
 
 def _build_csrf_trusted_origins(origins: list[str]) -> list[str]:
@@ -17,7 +17,7 @@ DEBUG = False
 
 CORS_ALLOW_ALL_ORIGINS = False
 
-CORS_ALLOWED_ORIGINS = config(  # noqa: F405
+CORS_ALLOWED_ORIGINS = config(
     "CORS_ALLOWED_ORIGINS",
     default="https://bibleway.io",
     cast=lambda v: [s.strip() for s in v.split(",") if s.strip()],
@@ -39,13 +39,13 @@ SESSION_COOKIE_SECURE = True
 
 CSRF_COOKIE_SECURE = True
 
-if REDIS_URL:  # noqa: F405
+if REDIS_URL:
     SESSION_ENGINE = "django.contrib.sessions.backends.cache"
 
     SESSION_CACHE_ALIAS = "default"
 
-MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")  # noqa: F405
+MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")
 
-STORAGES["staticfiles"] = {  # noqa: F405
+STORAGES["staticfiles"] = {
     "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
 }

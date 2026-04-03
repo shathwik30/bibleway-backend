@@ -1618,7 +1618,7 @@ class AdminAnalyticsService:
             .annotate(count=Count("id"))
             .order_by("date")
         )
-        from apps.social.models import Reaction  # noqa: E402 -- avoid circular at top
+        from apps.social.models import Reaction
 
         reactions_per_day = list(
             Reaction.objects.filter(created_at__gte=since)

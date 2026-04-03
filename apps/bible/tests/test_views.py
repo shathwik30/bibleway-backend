@@ -198,29 +198,27 @@ class TestSegregatedSectionListView:
 
     def test_if_none_match_matching_etag_returns_304(self, auth_client, section):
         """GET with If-None-Match matching ETag returns 304 Not Modified."""
-        # First request to prime the cache and get the ETag
+
         response1 = auth_client.get(self.url)
         assert response1.status_code == status.HTTP_200_OK
         etag = response1["ETag"]
-        assert etag  # ETag should be non-empty
+        assert etag
 
-        # Second request with matching If-None-Match should return 304
         response2 = auth_client.get(self.url, HTTP_IF_NONE_MATCH=etag)
         assert response2.status_code == 304
 
     def test_if_none_match_non_matching_etag_returns_200(self, auth_client, section):
         """GET with non-matching If-None-Match returns 200 with data."""
-        # First request to prime the cache
+
         response1 = auth_client.get(self.url)
         assert response1.status_code == status.HTTP_200_OK
 
-        # Second request with a non-matching ETag
         response2 = auth_client.get(
             self.url, HTTP_IF_NONE_MATCH="non-matching-etag-value"
         )
         assert response2.status_code == status.HTTP_200_OK
         assert "ETag" in response2
-        # Should return actual data
+
         assert response2.data["data"] is not None
 
 
