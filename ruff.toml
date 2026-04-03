@@ -1,0 +1,8 @@
+[lint]
+select = ["E", "F", "W"]
+ignore = ["E501"]
+
+[lint.per-file-ignores]
+"config/settings/*.py" = ["F401", "F403", "F405"]
+"config/asgi.py" = ["E402"]
+"apps/*/apps.py" = ["F401"]

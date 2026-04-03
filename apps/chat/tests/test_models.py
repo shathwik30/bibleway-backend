@@ -4,7 +4,7 @@ import pytest
 from django.db import IntegrityError
 
 from apps.chat.models import Conversation, Message
-from conftest import ConversationFactory, MessageFactory, UserFactory
+from conftest import ConversationFactory, MessageFactory
 
 
 @pytest.mark.django_db
