@@ -341,6 +341,37 @@ class BoostTierFactory(factory.django.DjangoModelFactory):
     is_active = True
 
 
+class ConversationFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = "chat.Conversation"
+        exclude = ["_user_a", "_user_b"]
+
+    _user_a = factory.SubFactory(UserFactory)
+
+    _user_b = factory.SubFactory(UserFactory)
+
+    user1 = factory.LazyAttribute(
+        lambda o: o._user_a if o._user_a.pk < o._user_b.pk else o._user_b
+    )
+
+    user2 = factory.LazyAttribute(
+        lambda o: o._user_b if o._user_a.pk < o._user_b.pk else o._user_a
+    )
+
+
+class MessageFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = "chat.Message"
+
+    conversation = factory.SubFactory(ConversationFactory)
+
+    sender = factory.LazyAttribute(lambda o: o.conversation.user1)
+
+    text = factory.Faker("sentence")
+
+    is_read = False
+
+
 @pytest.fixture(autouse=True)
 def _clear_cache():
     """Clear Django cache before each test to prevent stale data leaking."""

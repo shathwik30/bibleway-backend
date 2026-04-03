@@ -59,6 +59,7 @@ urlpatterns = [
     path("api/v1/analytics/", include("apps.analytics.urls")),
     path("api/v1/verse-of-day/", include("apps.verse_of_day.urls")),
     path("api/v1/admin/", include("apps.admin_panel.urls")),
+    path("api/v1/chat/", include("apps.chat.urls")),
 ]
 
 if settings.DEBUG:

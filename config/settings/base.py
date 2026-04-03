@@ -42,6 +42,7 @@ LOCAL_APPS = [
     "apps.analytics",
     "apps.verse_of_day",
     "apps.admin_panel",
+    "apps.chat",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
