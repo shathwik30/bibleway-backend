@@ -388,7 +388,17 @@ class ApiBibleProxyView(BaseAPIView):
     """GET /bible/api-bible/<path>/
 
     Proxies authenticated requests to the api.bible REST API, injecting the
-    server-side API key so it is never exposed to mobile clients.
+    server-side API key so it is never exposed to mobile clients. Responses
+    are cached server-side in Redis to reduce API quota usage and latency.
+
+    Cache TTLs by path pattern:
+        bibles/                         → 24 hours  (version list rarely changes)
+        bibles/<id>/books/              → 7 days    (book list never changes)
+        bibles/<id>/books/<id>/chapters → 7 days    (chapter list never changes)
+        bibles/<id>/chapters/<id>       → 1 day     (verse content, stable)
+        bibles/<id>/search              → 1 hour    (search results)
+        audio-bibles/                   → 24 hours
+        everything else                 → 1 hour
 
     Example:
         GET /bible/api-bible/bibles/
@@ -399,25 +409,65 @@ class ApiBibleProxyView(BaseAPIView):
 
     ALLOWED_PATH_PREFIXES: tuple[str, ...] = ("bibles", "audio-bibles")
 
+    CACHE_TTL_1H: int = 3600
+    CACHE_TTL_24H: int = 86400
+    CACHE_TTL_7D: int = 604800
+
+    def _get_cache_ttl(self, path: str) -> int:
+        """Determine cache TTL based on the API path pattern."""
+        parts: list[str] = path.strip("/").split("/")
+        depth: int = len(parts)
+
+        if depth == 1:
+            return self.CACHE_TTL_24H
+
+        if depth >= 3 and parts[2] in ("books", "chapters"):
+            return self.CACHE_TTL_7D
+
+        if depth >= 3 and parts[2] == "search":
+            return self.CACHE_TTL_1H
+
+        if depth >= 4 and parts[2] == "chapters":
+            return self.CACHE_TTL_24H
+
+        return self.CACHE_TTL_1H
+
+    @staticmethod
+    def _build_cache_key(path: str, params: dict[str, str]) -> str:
+        """Build a deterministic cache key from path and query params."""
+        import hashlib
+
+        sorted_params: str = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
+        raw: str = f"api_bible:{path}?{sorted_params}"
+        return f"api_bible:{hashlib.sha256(raw.encode()).hexdigest()}"
+
     def get(self, request: Request, path: str = "") -> Response:
+        from django.core.cache import cache as django_cache
+
         api_key: str = getattr(settings, "API_BIBLE_KEY", "")
 
         if not api_key:
             raise BadRequestError(detail="API Bible integration is not configured.")
 
-        normalized_path = path.strip("/")
+        normalized_path: str = path.strip("/")
 
         if not normalized_path or not normalized_path.startswith(
             self.ALLOWED_PATH_PREFIXES
         ):
             raise BadRequestError(detail="Invalid API Bible path.")
 
+        params: dict[str, str] = {k: v for k, v in request.query_params.items()}
+        cache_key: str = self._build_cache_key(normalized_path, params)
+        cached_data = django_cache.get(cache_key)
+
+        if cached_data is not None:
+            return self.success_response(data=cached_data)
+
         url: str = f"{self.API_BIBLE_BASE_URL}/{normalized_path}"
         headers: dict[str, str] = {
             "api-key": api_key,
             "Accept": "application/json",
         }
-        params: dict[str, str] = {k: v for k, v in request.query_params.items()}
 
         try:
             upstream_response = requests.get(
@@ -449,5 +499,8 @@ class ApiBibleProxyView(BaseAPIView):
             return Response(body, status=upstream_response.status_code)
 
         api_data = body.get("data", body)
+
+        ttl: int = self._get_cache_ttl(normalized_path)
+        django_cache.set(cache_key, api_data, timeout=ttl)
 
         return self.success_response(data=api_data)
