@@ -120,7 +120,9 @@ SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
-REDIS_URL = config("UPSTASHREDIS_URL", default="")
+REDIS_URL = config("UPSTASH_REDIS_URL", default="") or config(
+    "UPSTASHREDIS_URL", default=""
+)
 
 UPSTASH_SSL_OPTS = {}
 
