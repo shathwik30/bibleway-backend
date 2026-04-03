@@ -14,7 +14,6 @@ import pytest
 from django.contrib.contenttypes.models import ContentType
 from django.core.cache import cache
 
-from apps.accounts.models import FollowRelationship, User
 from apps.social.models import Comment, Post, Prayer, Reaction
 
 from conftest import (

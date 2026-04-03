@@ -1085,7 +1085,6 @@ class TestBulkUserDetailView:
         queryset filters are applied correctly.
         """
         u2 = UserFactory()
-        from apps.accounts.models import User
 
         response = auth_client.post(
             BULK_USERS_URL, {"user_ids": [str(u2.id)]}, format="json"

@@ -970,7 +970,6 @@ class TestBulkPostDetailView:
         factory = APIRequestFactory()
         request = factory.post("/posts/bulk/", data, format="json")
 
-        from rest_framework.test import force_authenticate
 
         return request, BulkPostDetailView
 

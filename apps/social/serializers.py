@@ -13,9 +13,7 @@ from apps.common.validators import validate_image_file, validate_video_file
 from .models import (
     Comment,
     Post,
-    PostMedia,
     Prayer,
-    PrayerMedia,
     Reaction,
     Reply,
     Report,
