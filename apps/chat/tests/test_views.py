@@ -50,9 +50,7 @@ class TestConversationListCreateView:
     def test_list_excludes_blocked(self, auth_client, user, user2):
         u1, u2 = sorted([user, user2], key=lambda u: u.pk)
         conv = ConversationFactory(user1=u1, user2=u2)
-        Conversation.objects.filter(pk=conv.pk).update(
-            last_message_at=conv.created_at
-        )
+        Conversation.objects.filter(pk=conv.pk).update(last_message_at=conv.created_at)
         BlockRelationshipFactory(blocker=user, blocked=user2)
 
         response = auth_client.get(CONVERSATIONS_URL)
@@ -139,9 +137,7 @@ class TestMessageListCreateView:
         u1, u2 = sorted([user, user2], key=lambda u: u.pk)
         conv = ConversationFactory(user1=u1, user2=u2)
 
-        response = auth_client.post(
-            messages_url(conv.id), {"text": ""}, format="json"
-        )
+        response = auth_client.post(messages_url(conv.id), {"text": ""}, format="json")
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
     def test_non_participant_returns_403(self, user, user2):

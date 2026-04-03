@@ -58,9 +58,7 @@ class TestConversationModel:
 class TestMessageModel:
     def test_create_message(self):
         conv = ConversationFactory()
-        msg = Message.objects.create(
-            conversation=conv, sender=conv.user1, text="Hello"
-        )
+        msg = Message.objects.create(conversation=conv, sender=conv.user1, text="Hello")
 
         assert msg.pk is not None
         assert msg.text == "Hello"

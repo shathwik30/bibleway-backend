@@ -71,9 +71,7 @@ class TestConversationServiceList:
         u1, u2 = sorted([user, user2], key=lambda u: u.pk)
         conv = ConversationFactory(user1=u1, user2=u2)
         MessageFactory(conversation=conv, sender=u1)
-        Conversation.objects.filter(pk=conv.pk).update(
-            last_message_at=conv.created_at
-        )
+        Conversation.objects.filter(pk=conv.pk).update(last_message_at=conv.created_at)
 
         result = list(self.service.list_user_conversations(user_id=user.id))
         assert len(result) == 1
@@ -89,9 +87,7 @@ class TestConversationServiceList:
     def test_excludes_blocked_users(self, user, user2):
         u1, u2 = sorted([user, user2], key=lambda u: u.pk)
         conv = ConversationFactory(user1=u1, user2=u2)
-        Conversation.objects.filter(pk=conv.pk).update(
-            last_message_at=conv.created_at
-        )
+        Conversation.objects.filter(pk=conv.pk).update(last_message_at=conv.created_at)
         BlockRelationshipFactory(blocker=user, blocked=user2)
 
         result = list(self.service.list_user_conversations(user_id=user.id))
@@ -103,9 +99,7 @@ class TestConversationServiceList:
         MessageFactory(conversation=conv, sender=user2, is_read=False)
         MessageFactory(conversation=conv, sender=user2, is_read=False)
         MessageFactory(conversation=conv, sender=user, is_read=False)
-        Conversation.objects.filter(pk=conv.pk).update(
-            last_message_at=conv.created_at
-        )
+        Conversation.objects.filter(pk=conv.pk).update(last_message_at=conv.created_at)
 
         result = list(self.service.list_user_conversations(user_id=user.id))
         assert len(result) == 1
@@ -253,9 +247,7 @@ class TestMessageServiceList:
         MessageFactory(conversation=conv, sender=u2, text="msg2")
 
         msgs = list(
-            self.service.list_messages(
-                conversation_id=conv.id, user_id=user.id
-            )
+            self.service.list_messages(conversation_id=conv.id, user_id=user.id)
         )
         assert len(msgs) == 2
 
@@ -265,9 +257,7 @@ class TestMessageServiceList:
         outsider = UserFactory()
 
         with pytest.raises(ForbiddenError):
-            self.service.list_messages(
-                conversation_id=conv.id, user_id=outsider.id
-            )
+            self.service.list_messages(conversation_id=conv.id, user_id=outsider.id)
 
 
 @pytest.mark.django_db

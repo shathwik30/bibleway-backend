@@ -26,6 +26,8 @@ MAX_MESSAGE_LENGTH = 1000
 
 
 class ConversationService(BaseService[Conversation]):
+    """Business logic for one-to-one conversations."""
+
     model = Conversation
 
     def get_queryset(self) -> QuerySet[Conversation]:
@@ -37,6 +39,7 @@ class ConversationService(BaseService[Conversation]):
 
     @staticmethod
     def _canonical_ids(user_a_id: UUID, user_b_id: UUID) -> tuple[UUID, UUID]:
+        """Return user IDs in canonical order (smaller first)."""
         if user_a_id < user_b_id:
             return user_a_id, user_b_id
         return user_b_id, user_a_id
@@ -45,6 +48,7 @@ class ConversationService(BaseService[Conversation]):
     def get_or_create_conversation(
         self, *, user_a_id: UUID, user_b_id: UUID
     ) -> tuple[Conversation, bool]:
+        """Create or retrieve a conversation between two users."""
         if user_a_id == user_b_id:
             raise BadRequestError(detail="Cannot start a conversation with yourself.")
 
@@ -62,13 +66,10 @@ class ConversationService(BaseService[Conversation]):
 
         return conversation, created
 
-    def list_user_conversations(
-        self, *, user_id: UUID
-    ) -> QuerySet[Conversation]:
+    def list_user_conversations(self, *, user_id: UUID) -> QuerySet[Conversation]:
+        """Return conversations for a user, annotated with unread counts."""
         blocked = get_blocked_user_ids(user_id)
-        qs = self.get_queryset().filter(
-            Q(user1_id=user_id) | Q(user2_id=user_id)
-        )
+        qs = self.get_queryset().filter(Q(user1_id=user_id) | Q(user2_id=user_id))
         if blocked:
             qs = qs.exclude(Q(user1_id__in=blocked) | Q(user2_id__in=blocked))
 
@@ -84,6 +85,7 @@ class ConversationService(BaseService[Conversation]):
     def get_conversation_for_user(
         self, *, user_id: UUID, conversation_id: UUID
     ) -> Conversation:
+        """Retrieve a conversation, verifying the user is a participant."""
         conversation = self.get_by_id(conversation_id)
         if user_id not in (conversation.user1_id, conversation.user2_id):
             raise ForbiddenError(
@@ -93,20 +95,21 @@ class ConversationService(BaseService[Conversation]):
 
     @staticmethod
     def get_other_user_id(conversation: Conversation, user_id: UUID) -> UUID:
+        """Return the ID of the other participant in the conversation."""
         if conversation.user1_id == user_id:
             return conversation.user2_id
         return conversation.user1_id
 
     def get_total_unread_count(self, *, user_id: UUID) -> int:
+        """Return total unread messages across all conversations, cached for 30s."""
         cache_key = f"chat_unread:{user_id}"
-        count = cache.get(cache_key)
+        count: int | None = cache.get(cache_key)
         if count is not None:
             return count
 
         count = (
             Message.objects.filter(
-                Q(conversation__user1_id=user_id)
-                | Q(conversation__user2_id=user_id),
+                Q(conversation__user1_id=user_id) | Q(conversation__user2_id=user_id),
                 is_read=False,
             )
             .exclude(sender_id=user_id)
@@ -117,6 +120,8 @@ class ConversationService(BaseService[Conversation]):
 
 
 class MessageService(BaseService[Message]):
+    """Business logic for chat messages."""
+
     model = Message
 
     def get_queryset(self) -> QuerySet[Message]:
@@ -128,7 +133,12 @@ class MessageService(BaseService[Message]):
     @transaction.atomic
     def create_message(
         self, *, conversation_id: UUID, sender_id: UUID, text: str
-    ) -> Message:
+    ) -> tuple[Message, UUID]:
+        """Create a message and update the conversation metadata.
+
+        Returns a tuple of (message, recipient_id) so the caller can
+        dispatch notifications outside the transaction.
+        """
         conv_svc = self._conversation_service()
         conversation = conv_svc.get_conversation_for_user(
             user_id=sender_id, conversation_id=conversation_id
@@ -163,9 +173,15 @@ class MessageService(BaseService[Message]):
         )
         return message, recipient_id
 
-    def _send_notification(
-        self, *, recipient_id: UUID, sender_id: UUID, conversation_id: UUID, text: str
+    def send_notification(
+        self,
+        *,
+        recipient_id: UUID,
+        sender_id: UUID,
+        conversation_id: UUID,
+        text: str,
     ) -> None:
+        """Dispatch a push notification for a new message."""
         send_notification_safe(
             recipient_id=recipient_id,
             sender_id=sender_id,
@@ -181,14 +197,14 @@ class MessageService(BaseService[Message]):
     def list_messages(
         self, *, conversation_id: UUID, user_id: UUID
     ) -> QuerySet[Message]:
-        ConversationService().get_conversation_for_user(
+        """Return messages for a conversation, verifying user is a participant."""
+        self._conversation_service().get_conversation_for_user(
             user_id=user_id, conversation_id=conversation_id
         )
         return self.get_queryset().filter(conversation_id=conversation_id)
 
-    def mark_messages_as_read(
-        self, *, conversation_id: UUID, user_id: UUID
-    ) -> int:
+    def mark_messages_as_read(self, *, conversation_id: UUID, user_id: UUID) -> int:
+        """Mark all unread messages from the other user as read."""
         count = (
             Message.objects.filter(
                 conversation_id=conversation_id,

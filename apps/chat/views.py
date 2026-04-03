@@ -54,9 +54,7 @@ class ConversationListCreateView(BaseAPIView):
         data = ConversationListSerializer(conversation, context=context).data
 
         if created:
-            return self.created_response(
-                data=data, message="Conversation created."
-            )
+            return self.created_response(data=data, message="Conversation created.")
         return self.success_response(data=data, message="Conversation retrieved.")
 
 
@@ -89,7 +87,7 @@ class MessageListCreateView(BaseAPIView):
             text=serializer.validated_data["text"],
         )
 
-        self._msg_service._send_notification(
+        self._msg_service.send_notification(
             recipient_id=recipient_id,
             sender_id=request.user.id,
             conversation_id=pk,
@@ -132,7 +130,5 @@ class ChatUnreadCountView(BaseAPIView):
         self._conv_service = ConversationService()
 
     def get(self, request: Request) -> Response:
-        count = self._conv_service.get_total_unread_count(
-            user_id=request.user.id
-        )
+        count = self._conv_service.get_total_unread_count(user_id=request.user.id)
         return self.success_response(data={"unread_count": count})
