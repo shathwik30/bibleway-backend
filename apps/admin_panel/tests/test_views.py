@@ -94,19 +94,19 @@ def moderation_admin_client(moderation_admin_user):
 
 @pytest.fixture(autouse=True)
 def _mock_storage():
-    """Prevent UploadThing API calls during tests by mocking the storage."""
+    """Prevent S3 API calls during tests by mocking the storage backend."""
 
     with (
         patch(
-            "apps.common.storage_backends.UploadThingStorage._save",
+            "storages.backends.s3boto3.S3Boto3Storage._save",
             return_value="mocked-file-key",
         ),
         patch(
-            "apps.common.storage_backends.UploadThingStorage.url",
+            "storages.backends.s3boto3.S3Boto3Storage.url",
             return_value="https://cdn.example.com/mocked-file",
         ),
         patch(
-            "apps.common.storage_backends.UploadThingStorage.exists",
+            "storages.backends.s3boto3.S3Boto3Storage.exists",
             return_value=False,
         ),
     ):

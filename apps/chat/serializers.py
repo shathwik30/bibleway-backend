@@ -81,6 +81,13 @@ class MessageCreateSerializer(serializers.Serializer):
     text = serializers.CharField(max_length=1000)
 
 
+class TranslateMessageSerializer(serializers.Serializer):
+    """Validates input for translating a chat message."""
+
+    message_id = serializers.UUIDField()
+    target_language = serializers.CharField(max_length=10)
+
+
 class CreateConversationSerializer(serializers.Serializer):
     """Validates input for creating or retrieving a conversation."""
 

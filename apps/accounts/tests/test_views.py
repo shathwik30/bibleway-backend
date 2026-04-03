@@ -250,25 +250,26 @@ class TestLoginView:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
 
-MOCK_GOOGLE_INFO: dict = {
-    "iss": "accounts.google.com",
-    "aud": "test-google-client-id.apps.googleusercontent.com",
+MOCK_FIREBASE_TOKEN: dict = {
+    "uid": "firebase-uid-1234567890",
     "email": "googleuser@gmail.com",
     "email_verified": True,
     "name": "Google User",
     "picture": "https://lh3.googleusercontent.com/photo.jpg",
-    "sub": "1234567890",
+    "firebase": {"sign_in_provider": "google.com"},
 }
+
+FIREBASE_VERIFY_PATH = "firebase_admin.auth.verify_id_token"
 
 
 @pytest.mark.django_db
 class TestGoogleAuthView:
     """POST /api/v1/accounts/google-auth/"""
 
-    @patch("google.oauth2.id_token.verify_oauth2_token")
+    @patch(FIREBASE_VERIFY_PATH)
     def test_google_login_existing_user(self, mock_verify, api_client):
         user = UserFactory(email="googleuser@gmail.com")
-        mock_verify.return_value = MOCK_GOOGLE_INFO
+        mock_verify.return_value = MOCK_FIREBASE_TOKEN
         response = api_client.post(
             GOOGLE_AUTH_URL, {"id_token": "valid-token"}, format="json"
         )
@@ -279,9 +280,9 @@ class TestGoogleAuthView:
         assert "refresh" in data
         assert data["user_id"] == str(user.id)
 
-    @patch("google.oauth2.id_token.verify_oauth2_token")
+    @patch(FIREBASE_VERIFY_PATH)
     def test_google_new_user_missing_fields_returns_202(self, mock_verify, api_client):
-        mock_verify.return_value = MOCK_GOOGLE_INFO
+        mock_verify.return_value = MOCK_FIREBASE_TOKEN
         response = api_client.post(
             GOOGLE_AUTH_URL, {"id_token": "valid-token"}, format="json"
         )
@@ -291,12 +292,11 @@ class TestGoogleAuthView:
         assert data["google_user"]["email"] == "googleuser@gmail.com"
         assert data["google_user"]["full_name"] == "Google User"
 
-    @patch("google.oauth2.id_token.verify_oauth2_token")
+    @patch(FIREBASE_VERIFY_PATH)
     def test_google_new_user_with_all_fields_creates_user(
         self, mock_verify, api_client
     ):
-
-        mock_verify.return_value = MOCK_GOOGLE_INFO
+        mock_verify.return_value = MOCK_FIREBASE_TOKEN
         response = api_client.post(
             GOOGLE_AUTH_URL,
             {
@@ -317,28 +317,28 @@ class TestGoogleAuthView:
         assert user.full_name == "Google User"
         assert user.has_usable_password() is False
 
-    @patch("google.oauth2.id_token.verify_oauth2_token")
+    @patch(FIREBASE_VERIFY_PATH)
     def test_google_invalid_token(self, mock_verify, api_client):
         mock_verify.side_effect = ValueError("Invalid token")
         response = api_client.post(
             GOOGLE_AUTH_URL, {"id_token": "bad-token"}, format="json"
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "Invalid Google ID token" in response.data["message"]
+        assert "Invalid Firebase ID token" in response.data["message"]
 
-    @patch("google.oauth2.id_token.verify_oauth2_token")
-    def test_google_wrong_audience_rejected(self, mock_verify, api_client):
-        info = {**MOCK_GOOGLE_INFO, "aud": "wrong-client-id"}
+    @patch(FIREBASE_VERIFY_PATH)
+    def test_google_non_google_provider_rejected(self, mock_verify, api_client):
+        info = {**MOCK_FIREBASE_TOKEN, "firebase": {"sign_in_provider": "password"}}
         mock_verify.return_value = info
         response = api_client.post(
             GOOGLE_AUTH_URL, {"id_token": "valid-token"}, format="json"
         )
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "audience" in response.data["message"]
+        assert "Google Sign-In" in response.data["message"]
 
-    @patch("google.oauth2.id_token.verify_oauth2_token")
+    @patch(FIREBASE_VERIFY_PATH)
     def test_google_unverified_email_rejected(self, mock_verify, api_client):
-        info = {**MOCK_GOOGLE_INFO, "email_verified": False}
+        info = {**MOCK_FIREBASE_TOKEN, "email_verified": False}
         mock_verify.return_value = info
         response = api_client.post(
             GOOGLE_AUTH_URL, {"id_token": "valid-token"}, format="json"
@@ -346,19 +346,19 @@ class TestGoogleAuthView:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert "not verified" in response.data["message"]
 
-    @patch("google.oauth2.id_token.verify_oauth2_token")
+    @patch(FIREBASE_VERIFY_PATH)
     def test_google_deactivated_user_forbidden(self, mock_verify, api_client):
         UserFactory(email="googleuser@gmail.com", is_active=False)
-        mock_verify.return_value = MOCK_GOOGLE_INFO
+        mock_verify.return_value = MOCK_FIREBASE_TOKEN
         response = api_client.post(
             GOOGLE_AUTH_URL, {"id_token": "valid-token"}, format="json"
         )
         assert response.status_code == status.HTTP_403_FORBIDDEN
 
-    @patch("google.oauth2.id_token.verify_oauth2_token")
+    @patch(FIREBASE_VERIFY_PATH)
     def test_google_duplicate_email_conflict(self, mock_verify, api_client):
         UserFactory(email="googleuser@gmail.com")
-        mock_verify.return_value = MOCK_GOOGLE_INFO
+        mock_verify.return_value = MOCK_FIREBASE_TOKEN
         response = api_client.post(
             GOOGLE_AUTH_URL, {"id_token": "valid-token"}, format="json"
         )
@@ -369,9 +369,9 @@ class TestGoogleAuthView:
         response = api_client.post(GOOGLE_AUTH_URL, {}, format="json")
         assert response.status_code == status.HTTP_400_BAD_REQUEST
 
-    @patch("google.oauth2.id_token.verify_oauth2_token")
+    @patch(FIREBASE_VERIFY_PATH)
     def test_google_new_user_validates_dob(self, mock_verify, api_client):
-        mock_verify.return_value = MOCK_GOOGLE_INFO
+        mock_verify.return_value = MOCK_FIREBASE_TOKEN
         response = api_client.post(
             GOOGLE_AUTH_URL,
             {

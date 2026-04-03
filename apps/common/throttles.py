@@ -56,3 +56,11 @@ class SocialCreateThrottle(UserRateThrottle):
     scope = "social_create"
 
     rate = "20/minute"
+
+
+class TranslateRateThrottle(UserRateThrottle):
+    """Rate limit translation requests to control API costs."""
+
+    scope = "translate"
+
+    rate = "30/minute"

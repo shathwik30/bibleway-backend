@@ -8,7 +8,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from apps.common.pagination import FeedCursorPagination
-from apps.common.throttles import FeedRateThrottle, SocialCreateThrottle
+from apps.common.throttles import FeedRateThrottle, SocialCreateThrottle, TranslateRateThrottle
 from apps.common.views import BaseAPIView
 
 from .serializers import (
@@ -16,8 +16,9 @@ from .serializers import (
     CreateConversationSerializer,
     MessageCreateSerializer,
     MessageSerializer,
+    TranslateMessageSerializer,
 )
-from .services import ConversationService, MessageService
+from .services import ConversationService, MessageService, TranslationService
 
 
 class ConversationListCreateView(BaseAPIView):
@@ -132,3 +133,29 @@ class ChatUnreadCountView(BaseAPIView):
     def get(self, request: Request) -> Response:
         count = self._conv_service.get_total_unread_count(user_id=request.user.id)
         return self.success_response(data={"unread_count": count})
+
+
+class MessageTranslateView(BaseAPIView):
+    """POST /messages/translate/ — translate a chat message to a target language."""
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [TranslateRateThrottle]
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self._translation_service = TranslationService()
+
+    def post(self, request: Request) -> Response:
+        serializer = TranslateMessageSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        result = self._translation_service.translate_message(
+            message_id=serializer.validated_data["message_id"],
+            target_language=serializer.validated_data["target_language"],
+            user_id=request.user.id,
+        )
+
+        return self.success_response(
+            data=result,
+            message="Message translated.",
+        )

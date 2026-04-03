@@ -230,8 +230,8 @@ class PostService(BaseService[Post]):
     ) -> Post:
         """Create a post with optional media attachments.
         Media can be provided as:
-        - ``media_keys``: UploadThing file keys (preferred, from client upload)
-        - ``media_files``: Raw uploaded files (legacy, server-side upload)
+        - ``media_keys``: S3 object keys (preferred, from client upload)
+        - ``media_files``: Raw uploaded files (server-side upload)
         """
         has_media = bool(media_keys) or bool(media_files)
 

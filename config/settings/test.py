@@ -157,8 +157,6 @@ ANDROID_PACKAGE_NAME = "com.bibleway.test"
 
 GOOGLE_PLAY_CREDENTIALS = None
 
-GOOGLE_OAUTH_CLIENT_IDS = ["test-google-client-id.apps.googleusercontent.com"]
-
 UPLOADTHING_TOKEN = "test-token"
 
 UPLOADTHING_APP_ID = "test-app-id"

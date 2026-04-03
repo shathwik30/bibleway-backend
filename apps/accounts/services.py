@@ -252,39 +252,34 @@ class AuthService:
 
     @transaction.atomic
     def google_auth(self, validated_data: dict[str, Any]) -> dict[str, Any]:
-        """Authenticate or register via Google Sign-In.
+        """Authenticate or register via Firebase Google Sign-In.
         - Existing user: returns JWT tokens.
         - New user without required fields: returns google profile for frontend completion.
         - New user with required fields: creates user, returns JWT tokens.
         """
-        from google.auth.transport import requests as google_requests
-        from google.oauth2 import id_token as google_id_token
+        from firebase_admin import auth as firebase_auth
 
         token: str = validated_data["id_token"]
 
         try:
-            google_info: dict[str, Any] = google_id_token.verify_oauth2_token(
-                token,
-                google_requests.Request(),
-                clock_skew_in_seconds=10,
-            )
+            decoded: dict[str, Any] = firebase_auth.verify_id_token(token)
+        except (ValueError, firebase_auth.InvalidIdTokenError):
+            raise BadRequestError(detail="Invalid Firebase ID token.")
+        except firebase_auth.ExpiredIdTokenError:
+            raise BadRequestError(detail="Firebase ID token has expired.")
+        except firebase_auth.RevokedIdTokenError:
+            raise BadRequestError(detail="Firebase ID token has been revoked.")
 
-        except ValueError:
-            raise BadRequestError(detail="Invalid Google ID token.")
+        # Ensure the user signed in via Google
+        sign_in_provider: str = (
+            decoded.get("firebase", {}).get("sign_in_provider", "")
+        )
+        if sign_in_provider != "google.com":
+            raise BadRequestError(detail="Only Google Sign-In is supported.")
 
-        allowed_ids: list[str] = settings.GOOGLE_OAUTH_CLIENT_IDS
+        email: str = decoded.get("email", "").lower().strip()
 
-        if not allowed_ids:
-            raise BadRequestError(
-                detail="Google Sign-In is not configured on the server."
-            )
-
-        if google_info.get("aud") not in allowed_ids:
-            raise BadRequestError(detail="Invalid Google ID token audience.")
-
-        email: str = google_info.get("email", "").lower().strip()
-
-        if not email or not google_info.get("email_verified", False):
+        if not email or not decoded.get("email_verified", False):
             raise BadRequestError(detail="Google account email is not verified.")
 
         existing_user: User | None = User.objects.filter(email__iexact=email).first()
@@ -303,8 +298,8 @@ class AuthService:
                 "user_id": str(existing_user.id),
             }
 
-        google_name: str = google_info.get("name", "")
-        google_picture: str = google_info.get("picture", "")
+        google_name: str = decoded.get("name", "")
+        google_picture: str = decoded.get("picture", "")
         has_required: bool = all(
             k in validated_data for k in ("date_of_birth", "gender", "country")
         )

@@ -8,8 +8,8 @@ from django.db import transaction
 from django.db.models import Count, Q, QuerySet
 from django.utils import timezone
 
-from apps.common.constants import CACHE_TIMEOUT_UNREAD_COUNT
-from apps.common.exceptions import BadRequestError, ForbiddenError
+from apps.common.constants import CACHE_TIMEOUT_TRANSLATION, CACHE_TIMEOUT_UNREAD_COUNT
+from apps.common.exceptions import BadRequestError, ForbiddenError, NotFoundError
 from apps.common.services import BaseService
 from apps.common.utils import (
     build_notification_data,
@@ -218,3 +218,88 @@ class MessageService(BaseService[Message]):
             cache.delete(f"chat_unread:{user_id}")
 
         return count
+
+
+class TranslationService:
+    """Translates chat messages via Google Cloud Translation API with caching."""
+
+    def translate_message(
+        self,
+        *,
+        message_id: UUID,
+        target_language: str,
+        user_id: UUID,
+    ) -> dict[str, str]:
+        """Translate a single message text into the target language.
+
+        The result is cached for 24 hours keyed by (message_id, target_language).
+        The user must be a participant of the conversation that owns the message.
+        """
+        cache_key = f"msg_translate:{message_id}:{target_language}"
+        cached: str | None = cache.get(cache_key)
+        if cached is not None:
+            return {
+                "translated_text": cached,
+                "source_language": "",
+                "target_language": target_language,
+            }
+
+        try:
+            message = Message.objects.select_related("conversation").get(pk=message_id)
+        except Message.DoesNotExist:
+            raise NotFoundError(detail="Message not found.")
+
+        conversation = message.conversation
+        if user_id not in (conversation.user1_id, conversation.user2_id):
+            raise ForbiddenError(detail="You are not a participant of this conversation.")
+
+        translated_text, detected_source = self._call_google_translate(
+            message.text, target_language=target_language
+        )
+
+        cache.set(cache_key, translated_text, timeout=CACHE_TIMEOUT_TRANSLATION)
+
+        return {
+            "translated_text": translated_text,
+            "source_language": detected_source,
+            "target_language": target_language,
+        }
+
+    @staticmethod
+    def _call_google_translate(
+        text: str, *, target_language: str
+    ) -> tuple[str, str]:
+        """Call Google Cloud Translation API v2. Returns (translated_text, detected_source)."""
+        import requests
+        from django.conf import settings
+
+        api_key: str = getattr(settings, "GOOGLE_TRANSLATE_API_KEY", "")
+        if not api_key:
+            logger.error("GOOGLE_TRANSLATE_API_KEY is not configured.")
+            raise BadRequestError(detail="Translation service is not configured.")
+
+        url = "https://translation.googleapis.com/language/translate/v2"
+        payload = {
+            "q": text,
+            "target": target_language,
+            "format": "text",
+            "key": api_key,
+        }
+
+        try:
+            response = requests.post(url, data=payload, timeout=15)
+            response.raise_for_status()
+            data = response.json()
+            translations = data.get("data", {}).get("translations", [])
+
+            if not translations:
+                raise BadRequestError(detail="Translation API returned no results.")
+
+            entry = translations[0]
+            return entry["translatedText"], entry.get("detectedSourceLanguage", "")
+
+        except requests.RequestException as exc:
+            logger.exception("Google Translate API call failed: %s", exc)
+            raise BadRequestError(
+                detail="Translation service is temporarily unavailable."
+            )

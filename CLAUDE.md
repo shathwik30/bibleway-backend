@@ -68,7 +68,7 @@ celery -A config worker --loglevel=info
 
 ## Key Integrations
 
-Firebase (push), Resend (email), Google Translate (Bible translation), API Bible (verse data), Apple/Google IAP (receipt validation), UploadThing (file storage), Google OAuth (sign-in).
+Firebase (Google auth verification), Resend (email), Google Translate (Bible translation), API Bible (verse data), Apple/Google IAP (receipt validation), UploadThing (file storage).
 
 ## Environment
 

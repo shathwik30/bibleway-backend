@@ -5,6 +5,7 @@ from .views import (
     ConversationListCreateView,
     MessageListCreateView,
     MessageMarkReadView,
+    MessageTranslateView,
 )
 
 app_name = "chat"
@@ -29,5 +30,10 @@ urlpatterns = [
         "unread-count/",
         ChatUnreadCountView.as_view(),
         name="chat-unread-count",
+    ),
+    path(
+        "messages/translate/",
+        MessageTranslateView.as_view(),
+        name="message-translate",
     ),
 ]

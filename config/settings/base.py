@@ -217,11 +217,16 @@ else:
         },
     }
 
-UPLOADTHING_TOKEN = config("UPLOADTHING_TOKEN", default="")
+# Railway Object Storage (S3-compatible)
+AWS_ACCESS_KEY_ID = config("AWS_ACCESS_KEY_ID", default="")
+AWS_SECRET_ACCESS_KEY = config("AWS_SECRET_ACCESS_KEY", default="")
+AWS_STORAGE_BUCKET_NAME = config("AWS_STORAGE_BUCKET_NAME", default="")
+AWS_S3_ENDPOINT_URL = config("AWS_S3_ENDPOINT_URL", default="")
+AWS_S3_REGION_NAME = config("AWS_S3_REGION_NAME", default="auto")
+AWS_S3_ADDRESSING_STYLE = "virtual"
+AWS_QUERYSTRING_AUTH = False
 
-UPLOADTHING_APP_ID = config("UPLOADTHING_APP_ID", default="")
-
-if UPLOADTHING_TOKEN and UPLOADTHING_APP_ID:
+if AWS_ACCESS_KEY_ID and AWS_STORAGE_BUCKET_NAME:
     STORAGES = {
         "default": {
             "BACKEND": "apps.common.storage_backends.PublicMediaStorage",
@@ -293,12 +298,6 @@ RESEND_API_KEY = config("RESEND_API_KEY", default="")
 
 GOOGLE_TRANSLATE_API_KEY = config("GOOGLE_TRANSLATE_API_KEY", default="")
 
-GOOGLE_OAUTH_CLIENT_IDS = [
-    cid.strip()
-    for cid in config("GOOGLE_OAUTH_CLIENT_IDS", default="").split(",")
-    if cid.strip()
-]
-
 APPLE_SHARED_SECRET = config("APPLE_SHARED_SECRET", default="")
 
 APPLE_BUNDLE_ID = config("APPLE_BUNDLE_ID", default="com.bibleway.io")
@@ -320,6 +319,20 @@ def _parse_json_setting(raw: str) -> dict | None:
 GOOGLE_PLAY_CREDENTIALS = _parse_json_setting(
     config("GOOGLE_PLAY_CREDENTIALS_JSON", default="")
 )
+
+# -- Firebase Admin SDK --------------------------------------------------------
+# Used for: verifying Firebase ID tokens (Google Sign-In via Firebase Auth)
+# Expects the full service-account JSON as a single env var.
+_FIREBASE_CREDENTIALS_RAW = config("FIREBASE_CREDENTIALS_JSON", default="")
+_firebase_creds = _parse_json_setting(_FIREBASE_CREDENTIALS_RAW)
+if _firebase_creds is not None:
+    import firebase_admin as _firebase_admin
+    from firebase_admin import credentials as _fb_credentials
+
+    if not _firebase_admin._apps:  # guard against double init
+        _firebase_admin.initialize_app(
+            _fb_credentials.Certificate(_firebase_creds)
+        )
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
