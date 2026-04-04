@@ -3,6 +3,8 @@ import logging
 from datetime import timedelta
 from typing import Any
 from uuid import UUID
+import razorpay
+from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Q, QuerySet, Subquery
@@ -185,7 +187,7 @@ class PostBoostService(BaseService[PostBoost]):
                 detail=f"Transaction '{transaction_id}' has already been processed."
             )
 
-        if not receipt_data:
+        if platform != PostBoost.Platform.WEB and not receipt_data:
             raise ValidationError("Receipt data is required for boost activation.")
 
         try:
@@ -200,6 +202,11 @@ class PostBoostService(BaseService[PostBoost]):
                     product_id=tier,
                     purchase_token=receipt_data,
                 )
+
+            elif platform == PostBoost.Platform.WEB:
+                # Razorpay validation is handled by BoostRazorpayService
+                # before calling activate_boost, so nothing extra needed here.
+                pass
 
             else:
                 raise ValidationError(f"Unsupported platform: {platform}")
@@ -386,3 +393,171 @@ class AnalyticsService:
             "total_reactions": aggregates.get("total_reactions", 0),
             "total_comments": aggregates.get("total_comments", 0),
         }
+
+
+# -- Boost tier pricing (INR) for Razorpay web purchases ---------------------
+BOOST_TIER_PRICES: dict[str, int] = {
+    # tier name -> price in paise (e.g. 49900 = ₹499)
+    # Update these to match your actual boost tiers and pricing.
+    "boost_tier_1": 9900,
+    "boost_tier_2": 24900,
+    "boost_tier_3": 49900,
+}
+
+
+class BoostRazorpayService:
+    """Handles Razorpay order creation and payment verification for boost purchases."""
+
+    def __init__(self) -> None:
+        key_id = getattr(settings, "RAZORPAY_KEY_ID", "")
+        key_secret = getattr(settings, "RAZORPAY_KEY_SECRET", "")
+
+        if not key_id or not key_secret:
+            raise BadRequestError(detail="Razorpay credentials are not configured.")
+
+        self._client = razorpay.Client(auth=(key_id, key_secret))
+
+    def create_order(
+        self,
+        *,
+        post_id: UUID,
+        user_id: UUID,
+        tier: str,
+        duration_days: int,
+    ) -> dict:
+        """Create a Razorpay order for a boost purchase.
+
+        Returns the order_id, amount, currency, and razorpay_key
+        that the frontend needs to open the checkout widget.
+        """
+
+        try:
+            post = Post.objects.get(pk=post_id)
+        except Post.DoesNotExist:
+            raise NotFoundError(detail=f"Post with id '{post_id}' not found.")
+
+        if post.author_id != user_id:
+            raise ForbiddenError(detail="You can only boost your own posts.")
+
+        amount_paise = BOOST_TIER_PRICES.get(tier)
+
+        if amount_paise is None:
+            raise BadRequestError(
+                detail=f"Invalid boost tier '{tier}'. "
+                f"Valid tiers: {', '.join(sorted(BOOST_TIER_PRICES.keys()))}."
+            )
+
+        order_data = self._client.order.create(
+            {
+                "amount": amount_paise,
+                "currency": "INR",
+                "notes": {
+                    "post_id": str(post_id),
+                    "user_id": str(user_id),
+                    "tier": tier,
+                    "duration_days": str(duration_days),
+                    "type": "boost",
+                },
+            }
+        )
+
+        return {
+            "order_id": order_data["id"],
+            "amount": amount_paise,
+            "currency": "INR",
+            "razorpay_key": getattr(settings, "RAZORPAY_KEY_ID", ""),
+            "post_id": str(post_id),
+            "tier": tier,
+            "duration_days": duration_days,
+        }
+
+    @transaction.atomic
+    def verify_payment(
+        self,
+        *,
+        user_id: UUID,
+        post_id: UUID,
+        tier: str,
+        duration_days: int,
+        razorpay_order_id: str,
+        razorpay_payment_id: str,
+        razorpay_signature: str,
+    ) -> PostBoost:
+        """Verify the Razorpay payment and activate the boost."""
+
+        try:
+            self._client.utility.verify_payment_signature(
+                {
+                    "razorpay_order_id": razorpay_order_id,
+                    "razorpay_payment_id": razorpay_payment_id,
+                    "razorpay_signature": razorpay_signature,
+                }
+            )
+        except razorpay.errors.SignatureVerificationError:
+            raise ValidationError("Razorpay payment signature verification failed.")
+
+        try:
+            post = Post.objects.get(pk=post_id)
+        except Post.DoesNotExist:
+            raise NotFoundError(detail=f"Post with id '{post_id}' not found.")
+
+        if post.author_id != user_id:
+            raise ForbiddenError(detail="You can only boost your own posts.")
+
+        if PostBoost.objects.filter(transaction_id=razorpay_payment_id).exists():
+            raise ConflictError(
+                detail=f"Payment '{razorpay_payment_id}' has already been processed."
+            )
+
+        now = timezone.now()
+
+        try:
+            boost = PostBoost.objects.create(
+                post_id=post_id,
+                user_id=user_id,
+                tier=tier,
+                price=BOOST_TIER_PRICES.get(tier, 0) / 100,
+                platform=PostBoost.Platform.WEB,
+                transaction_id=razorpay_payment_id,
+                razorpay_order_id=razorpay_order_id,
+                razorpay_payment_id=razorpay_payment_id,
+                duration_days=duration_days,
+                is_active=True,
+                activated_at=now,
+                expires_at=now + timedelta(days=duration_days),
+            )
+        except IntegrityError:
+            raise ConflictError(
+                detail=f"Payment '{razorpay_payment_id}' has already been processed."
+            )
+
+        Post.objects.filter(pk=post_id).update(is_boosted=True)
+
+        logger.info(
+            "Razorpay boost activated: post=%s user=%s tier=%s payment=%s",
+            post_id,
+            user_id,
+            tier,
+            razorpay_payment_id,
+        )
+
+        try:
+            from apps.common.utils import build_notification_data
+            from apps.notifications.services import NotificationService
+
+            NotificationService().create_notification(
+                recipient_id=user_id,
+                sender_id=None,
+                notification_type="boost_live",
+                title="Your boost is live!",
+                body=f"Your post is now being promoted for {duration_days} days.",
+                data=build_notification_data("boost_live", post_id=post_id),
+            )
+        except Exception:
+            logger.warning(
+                "Failed to send boost_live notification for post=%s",
+                post_id,
+                exc_info=True,
+            )
+
+        return boost

@@ -11,13 +11,20 @@ from .models import PostBoost
 from .models import PostView
 from .serializers import (
     BoostAnalyticSnapshotSerializer,
+    BoostRazorpayOrderCreateSerializer,
+    BoostRazorpayVerifySerializer,
     PostAnalyticsSerializer,
     PostBoostCreateSerializer,
     PostBoostSerializer,
     RecordViewSerializer,
 )
 
-from .services import AnalyticsService, PostBoostService, PostViewService
+from .services import (
+    AnalyticsService,
+    BoostRazorpayService,
+    PostBoostService,
+    PostViewService,
+)
 
 
 class PostAnalyticsView(BaseAPIView):
@@ -162,4 +169,59 @@ class BoostAnalyticsView(BaseAPIView):
             snapshots,
             BoostAnalyticSnapshotSerializer,
             request,
+        )
+
+
+class BoostRazorpayCreateOrderView(BaseAPIView):
+    """POST /analytics/boosts/razorpay/create-order/ -- create Razorpay order for a boost."""
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [BoostRateThrottle]
+
+    def post(self, request: Request) -> Response:
+        serializer = BoostRazorpayOrderCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        service = BoostRazorpayService()
+        order_data = service.create_order(
+            post_id=data["post_id"],
+            user_id=request.user.id,
+            tier=data["tier"],
+            duration_days=data["duration_days"],
+        )
+
+        return self.created_response(
+            data=order_data,
+            message="Razorpay boost order created successfully.",
+        )
+
+
+class BoostRazorpayVerifyPaymentView(BaseAPIView):
+    """POST /analytics/boosts/razorpay/verify/ -- verify Razorpay payment and activate boost."""
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [BoostRateThrottle]
+
+    def post(self, request: Request) -> Response:
+        serializer = BoostRazorpayVerifySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        service = BoostRazorpayService()
+        boost = service.verify_payment(
+            user_id=request.user.id,
+            post_id=data["post_id"],
+            tier=data["tier"],
+            duration_days=data["duration_days"],
+            razorpay_order_id=data["razorpay_order_id"],
+            razorpay_payment_id=data["razorpay_payment_id"],
+            razorpay_signature=data["razorpay_signature"],
+        )
+
+        out = PostBoostSerializer(boost)
+
+        return self.created_response(
+            data=out.data,
+            message="Payment verified and boost activated successfully.",
         )

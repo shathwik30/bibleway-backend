@@ -2,6 +2,8 @@ from __future__ import annotations
 from django.urls import path
 from .views import (
     BoostAnalyticsView,
+    BoostRazorpayCreateOrderView,
+    BoostRazorpayVerifyPaymentView,
     PostAnalyticsView,
     PostBoostCreateView,
     PostBoostListView,
@@ -25,5 +27,16 @@ urlpatterns = [
         "boosts/<uuid:boost_id>/analytics/",
         BoostAnalyticsView.as_view(),
         name="boost-analytics",
+    ),
+    # Razorpay (web boost payments)
+    path(
+        "boosts/razorpay/create-order/",
+        BoostRazorpayCreateOrderView.as_view(),
+        name="boost-razorpay-create-order",
+    ),
+    path(
+        "boosts/razorpay/verify/",
+        BoostRazorpayVerifyPaymentView.as_view(),
+        name="boost-razorpay-verify",
     ),
 ]

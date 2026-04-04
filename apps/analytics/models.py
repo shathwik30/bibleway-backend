@@ -98,6 +98,7 @@ class PostBoost(CreatedAtModel):
     class Platform(models.TextChoices):
         IOS = "ios", "iOS"
         ANDROID = "android", "Android"
+        WEB = "web", "Web"
 
     post = models.ForeignKey(
         Post,
@@ -116,8 +117,30 @@ class PostBoost(CreatedAtModel):
         help_text="Maps to the IAP product ID for the boost tier.",
     )
 
+    price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Price in INR for web (Razorpay) boost purchases.",
+    )
+
     platform = models.CharField(max_length=10, choices=Platform.choices)
     transaction_id = models.CharField(max_length=255, unique=True, db_index=True)
+
+    razorpay_order_id = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Razorpay order ID for web boost purchases.",
+    )
+
+    razorpay_payment_id = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Razorpay payment ID for web boost purchases.",
+    )
     duration_days = models.PositiveSmallIntegerField()
     is_active = models.BooleanField(default=False, db_index=True)
     activated_at = models.DateTimeField(null=True, blank=True)

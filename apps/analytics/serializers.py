@@ -86,3 +86,22 @@ class BoostAnalyticSnapshotSerializer(BaseModelSerializer):
             "snapshot_date",
             "created_at",
         ]
+
+
+class BoostRazorpayOrderCreateSerializer(serializers.Serializer):
+    """Input for creating a Razorpay order for a boost."""
+
+    post_id = serializers.UUIDField()
+    tier = serializers.CharField(max_length=50)
+    duration_days = serializers.IntegerField(min_value=1, max_value=365)
+
+
+class BoostRazorpayVerifySerializer(serializers.Serializer):
+    """Input for verifying a Razorpay payment for a boost."""
+
+    post_id = serializers.UUIDField()
+    tier = serializers.CharField(max_length=50)
+    duration_days = serializers.IntegerField(min_value=1, max_value=365)
+    razorpay_order_id = serializers.CharField(max_length=255)
+    razorpay_payment_id = serializers.CharField(max_length=255)
+    razorpay_signature = serializers.CharField(max_length=512)
