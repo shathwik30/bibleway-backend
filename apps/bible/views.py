@@ -5,7 +5,7 @@ from uuid import UUID
 import requests
 from django.conf import settings
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from apps.common.exceptions import BadRequestError
@@ -387,9 +387,13 @@ class NoteViewSet(BaseModelViewSet):
 class ApiBibleProxyView(BaseAPIView):
     """GET /bible/api-bible/<path>/
 
-    Proxies authenticated requests to the api.bible REST API, injecting the
-    server-side API key so it is never exposed to mobile clients. Responses
-    are cached server-side in Redis to reduce API quota usage and latency.
+    Proxies requests to the api.bible REST API, injecting the server-side
+    API key so it is never exposed to mobile clients. Responses are cached
+    server-side in Redis to reduce API quota usage and latency.
+
+    Unauthenticated users receive a preview: list endpoints return only the
+    first few items, and content endpoints truncate the HTML body. The
+    response includes ``is_preview: true`` so the client can prompt sign-in.
 
     Cache TTLs by path pattern:
         bibles/                         → 24 hours  (version list rarely changes)
@@ -405,9 +409,14 @@ class ApiBibleProxyView(BaseAPIView):
         GET /bible/api-bible/bibles/<bible_id>/books/
     """
 
+    permission_classes = [AllowAny]
+
     API_BIBLE_BASE_URL: str = "https://rest.api.bible/v1"
 
     ALLOWED_PATH_PREFIXES: tuple[str, ...] = ("bibles", "audio-bibles")
+
+    PREVIEW_LIST_LIMIT: int = 3
+    PREVIEW_CONTENT_MAX_CHARS: int = 500
 
     CACHE_TTL_1H: int = 3600
     CACHE_TTL_24H: int = 86400
@@ -432,6 +441,35 @@ class ApiBibleProxyView(BaseAPIView):
 
         return self.CACHE_TTL_1H
 
+    def _truncate_for_preview(self, data: Any) -> Any:
+        """Return a trimmed copy of *data* suitable for unauthenticated users.
+
+        * If the top-level value is a list, only the first few items are kept.
+        * If it is a dict with a ``content`` key (chapter / verse HTML), the
+          HTML is truncated.
+        * If it is a dict with a ``verses`` key (search results), the list of
+          verses is trimmed.
+        """
+        import copy
+
+        if isinstance(data, list):
+            return data[: self.PREVIEW_LIST_LIMIT]
+
+        if not isinstance(data, dict):
+            return data
+
+        preview = copy.copy(data)
+
+        if "content" in preview and isinstance(preview["content"], str):
+            content: str = preview["content"]
+            if len(content) > self.PREVIEW_CONTENT_MAX_CHARS:
+                preview["content"] = content[: self.PREVIEW_CONTENT_MAX_CHARS] + "…"
+
+        if "verses" in preview and isinstance(preview["verses"], list):
+            preview["verses"] = preview["verses"][: self.PREVIEW_LIST_LIMIT]
+
+        return preview
+
     @staticmethod
     def _build_cache_key(path: str, params: dict[str, str]) -> str:
         """Build a deterministic cache key from path and query params."""
@@ -443,6 +481,11 @@ class ApiBibleProxyView(BaseAPIView):
 
     def get(self, request: Request, path: str = "") -> Response:
         from django.core.cache import cache as django_cache
+
+        is_authenticated: bool = (
+            getattr(request, "user", None) is not None
+            and request.user.is_authenticated
+        )
 
         api_key: str = getattr(settings, "API_BIBLE_KEY", "")
 
@@ -461,7 +504,12 @@ class ApiBibleProxyView(BaseAPIView):
         cached_data = django_cache.get(cache_key)
 
         if cached_data is not None:
-            return self.success_response(data=cached_data)
+            if is_authenticated:
+                return self.success_response(data=cached_data)
+            return self.success_response(
+                data=self._truncate_for_preview(cached_data),
+                message="Preview — sign in to view full content.",
+            )
 
         url: str = f"{self.API_BIBLE_BASE_URL}/{normalized_path}"
         headers: dict[str, str] = {
@@ -503,4 +551,10 @@ class ApiBibleProxyView(BaseAPIView):
         ttl: int = self._get_cache_ttl(normalized_path)
         django_cache.set(cache_key, api_data, timeout=ttl)
 
-        return self.success_response(data=api_data)
+        if is_authenticated:
+            return self.success_response(data=api_data)
+
+        return self.success_response(
+            data=self._truncate_for_preview(api_data),
+            message="Preview — sign in to view full content.",
+        )
