@@ -37,6 +37,9 @@ python-decouple>=3.8,<4.0
 boto3>=1.34,<2.0
 django-storages>=1.14,<2.0
 
+# Razorpay (Web Payments)
+razorpay>=1.4,<2.0
+
 # HTTP Client
 requests>=2.31,<3.0
 
