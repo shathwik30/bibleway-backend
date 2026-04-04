@@ -35,6 +35,14 @@ class Product(TimeStampedModel):
         help_text="Maps to the IAP product ID for paid products.",
     )
 
+    price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Price in INR for web (Razorpay) purchases. Null for IAP-only products.",
+    )
+
     is_free = models.BooleanField(default=False, db_index=True)
     category = models.CharField(max_length=100, db_index=True)
     is_active = models.BooleanField(default=True, db_index=True)
@@ -66,6 +74,7 @@ class Purchase(CreatedAtModel):
     class Platform(models.TextChoices):
         IOS = "ios", "iOS"
         ANDROID = "android", "Android"
+        WEB = "web", "Web"
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -81,7 +90,23 @@ class Purchase(CreatedAtModel):
 
     platform = models.CharField(max_length=10, choices=Platform.choices)
     receipt_data = models.TextField(
+        blank=True,
+        default="",
         help_text="Raw receipt data from Apple/Google for server-side validation.",
+    )
+
+    razorpay_order_id = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Razorpay order ID for web purchases.",
+    )
+
+    razorpay_payment_id = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Razorpay payment ID for web purchases.",
     )
 
     transaction_id = models.CharField(max_length=255, unique=True, db_index=True)

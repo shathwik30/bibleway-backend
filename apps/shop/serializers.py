@@ -15,6 +15,7 @@ class ProductListSerializer(BaseTimestampedSerializer):
             "cover_image",
             "category",
             "is_free",
+            "price",
             "price_tier",
             "apple_product_id",
             "google_product_id",
@@ -41,6 +42,7 @@ class ProductDetailSerializer(BaseTimestampedSerializer):
             "cover_image",
             "category",
             "is_free",
+            "price",
             "price_tier",
             "apple_product_id",
             "google_product_id",
@@ -132,3 +134,18 @@ class DownloadSerializer(BaseModelSerializer):
             "product",
             "created_at",
         ]
+
+
+class RazorpayOrderCreateSerializer(serializers.Serializer):
+    """Input for creating a Razorpay order."""
+
+    product_id = serializers.UUIDField()
+
+
+class RazorpayVerifySerializer(serializers.Serializer):
+    """Input for verifying a Razorpay payment after checkout."""
+
+    product_id = serializers.UUIDField()
+    razorpay_order_id = serializers.CharField(max_length=255)
+    razorpay_payment_id = serializers.CharField(max_length=255)
+    razorpay_signature = serializers.CharField(max_length=512)

@@ -1,6 +1,8 @@
 from __future__ import annotations
 import logging
 from uuid import UUID
+import razorpay
+from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.db.models import F, Q, QuerySet
 from rest_framework.exceptions import ValidationError
@@ -103,6 +105,11 @@ class PurchaseService(BaseService[Purchase]):
                     product_id=product.google_product_id or product.apple_product_id,
                     purchase_token=receipt_data,
                 )
+
+            elif platform == Purchase.Platform.WEB:
+                # Razorpay validation is done in RazorpayService.verify_payment()
+                # before calling verify_purchase, so nothing extra needed here.
+                pass
 
             else:
                 raise ValidationError(f"Unsupported platform: {platform}")
@@ -213,3 +220,131 @@ class DownloadService(BaseService[Download]):
             )
 
         return product.product_file.url
+
+
+class RazorpayService:
+    """Handles Razorpay order creation and payment verification for web purchases."""
+
+    def __init__(self) -> None:
+        key_id = getattr(settings, "RAZORPAY_KEY_ID", "")
+        key_secret = getattr(settings, "RAZORPAY_KEY_SECRET", "")
+
+        if not key_id or not key_secret:
+            raise BadRequestError(detail="Razorpay credentials are not configured.")
+
+        self._client = razorpay.Client(auth=(key_id, key_secret))
+
+    def create_order(self, *, product_id: UUID, user_id: UUID) -> dict:
+        """Create a Razorpay order for a product.
+
+        Returns a dict with order_id, amount, currency, and razorpay_key
+        that the frontend needs to open the checkout widget.
+        """
+
+        try:
+            product = Product.objects.get(pk=product_id, is_active=True)
+        except Product.DoesNotExist:
+            raise NotFoundError(
+                detail=f"Product with id '{product_id}' not found or inactive."
+            )
+
+        if product.is_free:
+            raise BadRequestError(
+                detail="Cannot create a payment order for a free product."
+            )
+
+        if not product.price:
+            raise BadRequestError(
+                detail="This product does not have a web price configured."
+            )
+
+        amount_paise = int(product.price * 100)
+
+        order_data = self._client.order.create(
+            {
+                "amount": amount_paise,
+                "currency": "INR",
+                "notes": {
+                    "product_id": str(product.id),
+                    "product_title": product.title,
+                    "user_id": str(user_id),
+                },
+            }
+        )
+
+        return {
+            "order_id": order_data["id"],
+            "amount": amount_paise,
+            "currency": "INR",
+            "razorpay_key": getattr(settings, "RAZORPAY_KEY_ID", ""),
+            "product_id": str(product.id),
+            "product_title": product.title,
+        }
+
+    @transaction.atomic
+    def verify_payment(
+        self,
+        *,
+        user_id: UUID,
+        product_id: UUID,
+        razorpay_order_id: str,
+        razorpay_payment_id: str,
+        razorpay_signature: str,
+    ) -> Purchase:
+        """Verify the Razorpay payment signature and record the purchase.
+
+        Uses the razorpay client's built-in utility to verify the signature,
+        then delegates to PurchaseService to create the record.
+        """
+
+        try:
+            self._client.utility.verify_payment_signature(
+                {
+                    "razorpay_order_id": razorpay_order_id,
+                    "razorpay_payment_id": razorpay_payment_id,
+                    "razorpay_signature": razorpay_signature,
+                }
+            )
+        except razorpay.errors.SignatureVerificationError:
+            raise ValidationError("Razorpay payment signature verification failed.")
+
+        try:
+            product = Product.objects.get(pk=product_id, is_active=True)
+        except Product.DoesNotExist:
+            raise NotFoundError(
+                detail=f"Product with id '{product_id}' not found or inactive."
+            )
+
+        if Purchase.objects.filter(transaction_id=razorpay_payment_id).exists():
+            raise ConflictError(
+                detail=f"Payment '{razorpay_payment_id}' has already been processed."
+            )
+
+        try:
+            purchase = Purchase.objects.create(
+                user_id=user_id,
+                product=product,
+                platform=Purchase.Platform.WEB,
+                receipt_data="",
+                transaction_id=razorpay_payment_id,
+                razorpay_order_id=razorpay_order_id,
+                razorpay_payment_id=razorpay_payment_id,
+                is_validated=True,
+            )
+        except IntegrityError:
+            raise ConflictError(
+                detail=f"Payment '{razorpay_payment_id}' has already been processed."
+            )
+
+        Product.objects.filter(pk=product_id).update(
+            download_count=F("download_count") + 1
+        )
+
+        logger.info(
+            "Razorpay purchase verified: user=%s product=%s payment=%s",
+            user_id,
+            product_id,
+            razorpay_payment_id,
+        )
+
+        return purchase

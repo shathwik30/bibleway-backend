@@ -1,7 +1,12 @@
 from __future__ import annotations
+import hashlib
+import hmac
+import json
+import logging
 from typing import Any
 from uuid import UUID
-from rest_framework.permissions import IsAuthenticated
+from django.conf import settings
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
@@ -14,9 +19,11 @@ from .serializers import (
     ProductListSerializer,
     PurchaseCreateSerializer,
     PurchaseSerializer,
+    RazorpayOrderCreateSerializer,
+    RazorpayVerifySerializer,
 )
 
-from .services import DownloadService, ProductService, PurchaseService
+from .services import DownloadService, ProductService, PurchaseService, RazorpayService
 
 
 class ProductListView(BaseAPIView):
@@ -192,3 +199,144 @@ class DownloadView(BaseAPIView):
             data={"download_url": download_url},
             message="Download URL generated successfully.",
         )
+
+
+logger = logging.getLogger(__name__)
+
+
+class RazorpayCreateOrderView(BaseAPIView):
+    """POST /shop/razorpay/create-order/ -- create a Razorpay order for a product.
+
+    Returns the order_id, amount, currency, and razorpay_key needed by
+    the frontend to open the Razorpay checkout widget.
+    """
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [PurchaseThrottle]
+
+    def post(self, request: Request) -> Response:
+        serializer = RazorpayOrderCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        service = RazorpayService()
+        order_data = service.create_order(
+            product_id=serializer.validated_data["product_id"],
+            user_id=request.user.id,
+        )
+
+        return self.created_response(
+            data=order_data,
+            message="Razorpay order created successfully.",
+        )
+
+
+class RazorpayVerifyPaymentView(BaseAPIView):
+    """POST /shop/razorpay/verify/ -- verify Razorpay payment and record purchase.
+
+    Called by the frontend after the user completes payment in the
+    Razorpay checkout widget.
+    """
+
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [PurchaseThrottle]
+
+    def post(self, request: Request) -> Response:
+        serializer = RazorpayVerifySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        service = RazorpayService()
+        purchase = service.verify_payment(
+            user_id=request.user.id,
+            product_id=data["product_id"],
+            razorpay_order_id=data["razorpay_order_id"],
+            razorpay_payment_id=data["razorpay_payment_id"],
+            razorpay_signature=data["razorpay_signature"],
+        )
+
+        out = PurchaseSerializer(purchase)
+
+        return self.created_response(
+            data=out.data,
+            message="Payment verified and purchase recorded successfully.",
+        )
+
+
+class RazorpayWebhookView(BaseAPIView):
+    """POST /shop/razorpay/webhook/ -- handle Razorpay server-to-server webhooks.
+
+    Razorpay signs the webhook body with HMAC-SHA256 using the webhook secret.
+    This endpoint acts as a fallback to catch payments that the frontend
+    verify flow may have missed (e.g. network issues after payment).
+    """
+
+    permission_classes = [AllowAny]
+    authentication_classes = []
+
+    def post(self, request: Request) -> Response:
+        webhook_secret = getattr(settings, "RAZORPAY_WEBHOOK_SECRET", "")
+
+        if not webhook_secret:
+            logger.warning(
+                "Razorpay webhook received but RAZORPAY_WEBHOOK_SECRET not configured."
+            )
+            return Response(status=200)
+
+        signature = request.META.get("HTTP_X_RAZORPAY_SIGNATURE", "")
+        body = request.body
+
+        expected = hmac.new(
+            webhook_secret.encode("utf-8"),
+            body,
+            hashlib.sha256,
+        ).hexdigest()
+
+        if not hmac.compare_digest(expected, signature):
+            logger.warning("Razorpay webhook signature mismatch.")
+            return Response(status=400)
+
+        payload = json.loads(body)
+        event = payload.get("event", "")
+
+        if event == "payment.captured":
+            payment_entity = (
+                payload.get("payload", {}).get("payment", {}).get("entity", {})
+            )
+            payment_id = payment_entity.get("id", "")
+            order_id = payment_entity.get("order_id", "")
+            notes = payment_entity.get("notes", {})
+            product_id = notes.get("product_id", "")
+            user_id = notes.get("user_id", "")
+
+            if payment_id and order_id and product_id and user_id:
+                from .models import Product, Purchase
+
+                if not Purchase.objects.filter(transaction_id=payment_id).exists():
+                    logger.info(
+                        "Razorpay webhook: recording missed payment %s for product %s",
+                        payment_id,
+                        product_id,
+                    )
+                    try:
+                        product = Product.objects.get(pk=product_id, is_active=True)
+                        Purchase.objects.create(
+                            user_id=user_id,
+                            product=product,
+                            platform=Purchase.Platform.WEB,
+                            receipt_data="",
+                            transaction_id=payment_id,
+                            razorpay_order_id=order_id,
+                            razorpay_payment_id=payment_id,
+                            is_validated=True,
+                        )
+                        from django.db.models import F
+
+                        Product.objects.filter(pk=product_id).update(
+                            download_count=F("download_count") + 1
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Razorpay webhook: failed to process payment %s", payment_id
+                        )
+
+        return Response(status=200)

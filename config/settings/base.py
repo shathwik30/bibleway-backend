@@ -304,6 +304,11 @@ APPLE_BUNDLE_ID = config("APPLE_BUNDLE_ID", default="com.bibleway.io")
 
 ANDROID_PACKAGE_NAME = config("ANDROID_PACKAGE_NAME", default="com.bibleway.io")
 
+# -- Razorpay (Web Payments) ---------------------------------------------------
+RAZORPAY_KEY_ID = config("RAZORPAY_KEY_ID", default="")
+RAZORPAY_KEY_SECRET = config("RAZORPAY_KEY_SECRET", default="")
+RAZORPAY_WEBHOOK_SECRET = config("RAZORPAY_WEBHOOK_SECRET", default="")
+
 
 def _parse_json_setting(raw: str) -> dict | None:
     if not raw or not raw.strip().startswith("{"):

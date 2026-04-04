@@ -1,4 +1,6 @@
 from __future__ import annotations
+import hashlib
+import hmac
 import logging
 import requests
 from django.conf import settings
@@ -164,3 +166,33 @@ def validate_google_receipt(
         )
 
     return result
+
+
+def validate_razorpay_payment(
+    razorpay_order_id: str,
+    razorpay_payment_id: str,
+    razorpay_signature: str,
+) -> None:
+    """Validate Razorpay payment signature using HMAC-SHA256.
+
+    Razorpay sends a signature = HMAC_SHA256(order_id|payment_id, secret).
+    We recompute it server-side and compare.
+
+    Raises ``ValueError`` on any validation failure.
+    """
+
+    key_secret = getattr(settings, "RAZORPAY_KEY_SECRET", "")
+
+    if not key_secret:
+        raise ValueError("RAZORPAY_KEY_SECRET is not configured.")
+
+    message = f"{razorpay_order_id}|{razorpay_payment_id}"
+
+    expected_signature = hmac.new(
+        key_secret.encode("utf-8"),
+        message.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+    if not hmac.compare_digest(expected_signature, razorpay_signature):
+        raise ValueError("Razorpay payment signature verification failed.")

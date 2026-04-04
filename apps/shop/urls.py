@@ -7,6 +7,9 @@ from .views import (
     ProductSearchView,
     PurchaseCreateView,
     PurchaseListView,
+    RazorpayCreateOrderView,
+    RazorpayVerifyPaymentView,
+    RazorpayWebhookView,
 )
 
 app_name = "shop"
@@ -21,5 +24,21 @@ urlpatterns = [
         "downloads/<uuid:product_id>/",
         DownloadView.as_view(),
         name="download",
+    ),
+    # Razorpay (web payments)
+    path(
+        "razorpay/create-order/",
+        RazorpayCreateOrderView.as_view(),
+        name="razorpay-create-order",
+    ),
+    path(
+        "razorpay/verify/",
+        RazorpayVerifyPaymentView.as_view(),
+        name="razorpay-verify",
+    ),
+    path(
+        "razorpay/webhook/",
+        RazorpayWebhookView.as_view(),
+        name="razorpay-webhook",
     ),
 ]

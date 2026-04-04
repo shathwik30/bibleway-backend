@@ -30,6 +30,9 @@ google-api-python-client>=2.100,<3.0
 # Environment
 python-decouple>=3.8,<4.0
 
+# Razorpay (Web Payments)
+razorpay>=1.4,<2.0
+
 # HTTP Client
 requests>=2.31,<3.0
 
