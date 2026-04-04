@@ -38,12 +38,23 @@ from .services import (
 logger = logging.getLogger(__name__)
 
 
+PREVIEW_CONTENT_MAX_CHARS: int = 500
+PREVIEW_LIST_LIMIT: int = 3
+
+
+def _is_authenticated(request: Request) -> bool:
+    return getattr(request, "user", None) is not None and request.user.is_authenticated
+
+
 class SegregatedSectionListView(BaseAPIView):
     """GET /bible/sections/
 
     Returns active sections, optionally prioritized by the authenticated
     user's age. Cached for 1 hour per age bracket. Supports ETag for 304.
+    Unauthenticated users see a limited preview (first few sections).
     """
+
+    permission_classes = [AllowAny]
 
     def get(self, request: Request) -> Response:
         import hashlib
@@ -63,7 +74,17 @@ class SegregatedSectionListView(BaseAPIView):
             if request.META.get("HTTP_IF_NONE_MATCH") == etag:
                 return Response(status=304)
 
-            resp = self.success_response(data=cached)
+            data = cached
+            if not _is_authenticated(request):
+                data = data[:PREVIEW_LIST_LIMIT]
+                resp = self.success_response(
+                    data=data,
+                    message="Preview — sign in to view all sections.",
+                )
+                resp["ETag"] = etag
+                return resp
+
+            resp = self.success_response(data=data)
             resp["ETag"] = etag
 
             return resp
@@ -77,7 +98,18 @@ class SegregatedSectionListView(BaseAPIView):
             cache_key, serializer.data, timeout=CACHE_TIMEOUT_BIBLE_SECTIONS
         )
         etag = hashlib.md5(str(serializer.data).encode()).hexdigest()
-        resp = self.success_response(data=serializer.data)
+
+        data = serializer.data
+        if not _is_authenticated(request):
+            data = data[:PREVIEW_LIST_LIMIT]
+            resp = self.success_response(
+                data=data,
+                message="Preview — sign in to view all sections.",
+            )
+            resp["ETag"] = etag
+            return resp
+
+        resp = self.success_response(data=data)
         resp["ETag"] = etag
 
         return resp
@@ -87,12 +119,21 @@ class ChapterListView(BaseAPIView):
     """GET /bible/sections/<section_id>/chapters/
 
     Returns active chapters for a section.
+    Unauthenticated users see a limited preview.
     """
+
+    permission_classes = [AllowAny]
 
     def get(self, request: Request, section_id: UUID) -> Response:
         service = SegregatedBibleService()
         chapters = service.get_chapters_for_section(section_id)
         serializer = SegregatedChapterListSerializer(chapters, many=True)
+
+        if not _is_authenticated(request):
+            return self.success_response(
+                data=serializer.data[:PREVIEW_LIST_LIMIT],
+                message="Preview — sign in to view all chapters.",
+            )
 
         return self.success_response(data=serializer.data)
 
@@ -101,12 +142,21 @@ class PageListView(BaseAPIView):
     """GET /bible/chapters/<chapter_id>/pages/
 
     Returns active pages (without full content) for a chapter.
+    Unauthenticated users see a limited preview.
     """
+
+    permission_classes = [AllowAny]
 
     def get(self, request: Request, chapter_id: UUID) -> Response:
         service = SegregatedBibleService()
         pages = service.get_pages_for_chapter(chapter_id)
         serializer = SegregatedPageListSerializer(pages, many=True)
+
+        if not _is_authenticated(request):
+            return self.success_response(
+                data=serializer.data[:PREVIEW_LIST_LIMIT],
+                message="Preview — sign in to view all pages.",
+            )
 
         return self.success_response(data=serializer.data)
 
@@ -116,7 +166,10 @@ class PageDetailView(BaseAPIView):
 
     Returns full page detail with optional translation.
     Query param: ``?lang=es`` to get translated content.
+    Unauthenticated users receive truncated content (500 chars preview).
     """
+
+    permission_classes = [AllowAny]
 
     def get(self, request: Request, page_id: UUID) -> Response:
         language_code: str | None = request.query_params.get("lang")
@@ -137,8 +190,22 @@ class PageDetailView(BaseAPIView):
 
         page = service.get_page_detail(page_id, language_code=language_code)
         serializer = SegregatedPageDetailSerializer(page)
+        data = serializer.data
 
-        return self.success_response(data=serializer.data)
+        if not _is_authenticated(request):
+            import copy
+
+            data = copy.copy(data)
+            content = data.get("content", "")
+            if isinstance(content, str) and len(content) > PREVIEW_CONTENT_MAX_CHARS:
+                data["content"] = content[:PREVIEW_CONTENT_MAX_CHARS] + "…"
+            data["is_preview"] = True
+            return self.success_response(
+                data=data,
+                message="Preview — sign in to view full content.",
+            )
+
+        return self.success_response(data=data)
 
 
 class PageCommentCreateView(BaseAPIView):
@@ -167,7 +234,10 @@ class BibleSearchView(BaseAPIView):
     """GET /bible/search/?q=<query>&section=<uuid>
 
     Full-text search across active pages.
+    Unauthenticated users see limited results.
     """
+
+    permission_classes = [AllowAny]
 
     pagination_class = StandardPageNumberPagination
 
@@ -185,6 +255,15 @@ class BibleSearchView(BaseAPIView):
 
         service = SegregatedBibleService()
         pages = service.search_content(query, section_id=section_id)
+
+        if not _is_authenticated(request):
+            pages = pages[:PREVIEW_LIST_LIMIT]
+            serializer = SegregatedPageListSerializer(pages, many=True)
+            return self.success_response(
+                data=serializer.data,
+                message="Preview — sign in to view all results.",
+            )
+
         paginator = StandardPageNumberPagination()
         paginated_pages = paginator.paginate_queryset(pages, request)
         serializer = SegregatedPageListSerializer(paginated_pages, many=True)
@@ -483,8 +562,7 @@ class ApiBibleProxyView(BaseAPIView):
         from django.core.cache import cache as django_cache
 
         is_authenticated: bool = (
-            getattr(request, "user", None) is not None
-            and request.user.is_authenticated
+            getattr(request, "user", None) is not None and request.user.is_authenticated
         )
 
         api_key: str = getattr(settings, "API_BIBLE_KEY", "")
