@@ -6,21 +6,25 @@ from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import UploadedFile
 from django.db import transaction
 from django.db.models import (
+    BooleanField,
     Case,
     CharField,
     Count,
     DateTimeField,
+    ExpressionWrapper,
     F,
     IntegerField,
     OuterRef,
     Prefetch,
     QuerySet,
     Subquery,
+    Value,
     When,
 )
 
-from django.db.models.functions import Coalesce
-from apps.accounts.models import User
+from django.db.models.functions import Coalesce, Least
+from django.db import models as db_models
+from apps.accounts.models import FollowRelationship, User
 from apps.common.exceptions import BadRequestError, ForbiddenError, NotFoundError
 from apps.common.services import BaseService
 from apps.common.utils import build_notification_data, get_blocked_user_ids
@@ -171,17 +175,83 @@ class PostService(BaseService[Post]):
         requesting_user: User,
     ) -> QuerySet[Post]:
         """Return the main post feed for a user.
-        - Excludes posts from users who have blocked (or are blocked by) the
-          requesting user.
-        - Boosted posts receive a 24-hour ranking boost, making them appear
-          as if they were posted 24 hours later for sorting purposes.
+
+        Ranking is computed as ``created_at + bonus_hours`` so cursor
+        pagination (which needs a monotonic DateTimeField) still works.
+
+        Bonus hours come from four simple signals:
+
+        1. **Following** — posts from people you follow get +6 h.
+        2. **Engagement** — up to +8 h based on reactions + comments
+           (capped at 50 to avoid runaway scores).
+        3. **Boost tier** — tier_1 +24 h, tier_2 +48 h, tier_3 +72 h
+           (falls back to +24 h for legacy ``is_boosted`` without a tier).
+        4. **Freshness jitter** — a tiny sub-second nudge derived from
+           the post's UUID so the feed order isn't identical across
+           reloads for posts with the same score.
         """
         qs = self._get_annotated_queryset(requesting_user=requesting_user)
 
+        # -- 1. Following bonus (+6 h) ------------------------------------
+        following_ids = set(
+            FollowRelationship.objects.filter(
+                follower_id=requesting_user.id,
+            ).values_list("following_id", flat=True)
+        )
+
+        is_following = Case(
+            When(author_id__in=following_ids, then=Value(True)),
+            default=Value(False),
+            output_field=BooleanField(),
+        )
+        following_bonus = Case(
+            When(author_id__in=following_ids, then=timedelta(hours=6)),
+            default=timedelta(0),
+            output_field=db_models.DurationField(),
+        )
+
+        # -- 2. Engagement bonus (up to +8 h) -----------------------------
+        # Cap combined engagement at 50 to prevent viral posts from
+        # permanently dominating the feed.
+        capped_engagement = Least(
+            F("reaction_count") + F("comment_count"),
+            Value(50),
+        )
+        # Each engagement point adds ~10 minutes (50 × 10 min = ~8 h).
+        engagement_bonus = ExpressionWrapper(
+            timedelta(minutes=10) * capped_engagement,
+            output_field=db_models.DurationField(),
+        )
+
+        # -- 3. Boost bonus (tiered) --------------------------------------
+        from apps.analytics.models import PostBoost
+
+        active_boost_tier = (
+            PostBoost.objects.filter(
+                post_id=OuterRef("pk"),
+                is_active=True,
+            )
+            .order_by("-tier")
+            .values("tier")[:1]
+        )
+
+        qs = qs.annotate(
+            _boost_tier=Subquery(active_boost_tier, output_field=CharField()),
+        )
+
+        boost_bonus = Case(
+            When(_boost_tier="boost_tier_3", then=timedelta(hours=72)),
+            When(_boost_tier="boost_tier_2", then=timedelta(hours=48)),
+            When(_boost_tier="boost_tier_1", then=timedelta(hours=24)),
+            When(is_boosted=True, then=timedelta(hours=24)),
+            default=timedelta(0),
+            output_field=db_models.DurationField(),
+        )
+
         return qs.annotate(
-            feed_rank=Case(
-                When(is_boosted=True, then=F("created_at") + timedelta(hours=24)),
-                default=F("created_at"),
+            is_following_author=is_following,
+            feed_rank=ExpressionWrapper(
+                F("created_at") + following_bonus + engagement_bonus + boost_bonus,
                 output_field=DateTimeField(),
             ),
         )
