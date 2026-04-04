@@ -15,7 +15,11 @@ def _build_csrf_trusted_origins(origins: list[str]) -> list[str]:
 
 DEBUG = False
 
-CORS_ALLOW_ALL_ORIGINS = False
+CORS_ALLOW_ALL_ORIGINS = config(
+    "CORS_ALLOW_ALL_ORIGINS",
+    default="False",
+    cast=lambda v: v.strip().lower() in ("true", "1", "yes"),
+)
 
 CORS_ALLOWED_ORIGINS = config(
     "CORS_ALLOWED_ORIGINS",
