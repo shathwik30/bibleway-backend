@@ -21,9 +21,11 @@ from apps.common.views import BaseAPIView, BaseModelViewSet, FeedViewSet
 from .serializers import (
     CommentCreateSerializer,
     CommentSerializer,
+    CommentUpdateSerializer,
     PostCreateSerializer,
     PostDetailSerializer,
     PostListSerializer,
+    PostUpdateSerializer,
     PrayerCreateSerializer,
     PrayerDetailSerializer,
     PrayerListSerializer,
@@ -59,7 +61,7 @@ class PostViewSet(FeedViewSet):
     share  – GET  /posts/{id}/share/
     """
 
-    http_method_names = ["get", "post", "delete", "head", "options"]
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
     permission_classes = [IsAuthenticated, IsOwnerOrReadOnly]
 
@@ -79,6 +81,9 @@ class PostViewSet(FeedViewSet):
 
         if self.action == "create":
             return PostCreateSerializer
+
+        if self.action == "partial_update":
+            return PostUpdateSerializer
 
         if self.action == "list":
             return PostListSerializer
@@ -149,6 +154,18 @@ class PostViewSet(FeedViewSet):
         serializer = PostDetailSerializer(post, context=self.get_serializer_context())
 
         return Response(serializer.data)
+
+    def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        serializer = PostUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        post = self._post_service.update_post(
+            post_id=kwargs["pk"],
+            requesting_user=request.user,
+            text_content=serializer.validated_data["text_content"],
+        )
+        out = PostDetailSerializer(post, context=self.get_serializer_context())
+
+        return Response(out.data)
 
     def destroy(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         self._post_service.delete_post(
@@ -435,11 +452,12 @@ class PrayerViewSet(FeedViewSet):
 class CommentViewSet(BaseModelViewSet):
     """CRUD for comments (typically nested under posts/prayers via URL config).
 
-    list    – GET    /comments/?content_type_model=post&object_id=<uuid>
-    destroy – DELETE /comments/{id}/
+    list           – GET    /comments/?content_type_model=post&object_id=<uuid>
+    partial_update – PATCH  /comments/{id}/
+    destroy        – DELETE /comments/{id}/
     """
 
-    http_method_names = ["get", "post", "delete", "head", "options"]
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
     permission_classes = [IsAuthenticated, IsOwnerOrReadOnly]
 
@@ -467,6 +485,9 @@ class CommentViewSet(BaseModelViewSet):
         if self.action == "create":
             return CommentCreateSerializer
 
+        if self.action == "partial_update":
+            return CommentUpdateSerializer
+
         return CommentSerializer
 
     def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
@@ -482,6 +503,18 @@ class CommentViewSet(BaseModelViewSet):
         out = CommentSerializer(comment)
 
         return Response(out.data, status=status.HTTP_201_CREATED)
+
+    def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        serializer = CommentUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        comment = self._comment_service.update_comment(
+            comment_id=kwargs["pk"],
+            requesting_user=request.user,
+            text=serializer.validated_data["text"],
+        )
+        out = CommentSerializer(comment)
+
+        return Response(out.data)
 
     def destroy(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         self._comment_service.delete_comment(

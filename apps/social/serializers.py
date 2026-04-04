@@ -137,6 +137,12 @@ class PostCreateSerializer(serializers.Serializer):
         return attrs
 
 
+class PostUpdateSerializer(serializers.Serializer):
+    """Validates input for editing a post's text content."""
+
+    text_content = serializers.CharField(max_length=2000, allow_blank=True)
+
+
 class PostDetailSerializer(BaseTimestampedSerializer):
     """Full post representation including author, media, and engagement counts."""
 
@@ -362,6 +368,12 @@ class CommentSerializer(BaseTimestampedSerializer):
             "created_at",
             "updated_at",
         ]
+
+
+class CommentUpdateSerializer(serializers.Serializer):
+    """Validates input for editing a comment's text."""
+
+    text = serializers.CharField(max_length=1000)
 
 
 class CommentCreateSerializer(serializers.Serializer):

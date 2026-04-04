@@ -268,6 +268,24 @@ class PostService(BaseService[Post]):
 
         self.delete(post)
 
+    def update_post(
+        self,
+        *,
+        post_id: UUID,
+        requesting_user: User,
+        text_content: str,
+    ) -> Post:
+        """Edit post text. Only the author may edit."""
+        post = self.get_by_id(post_id)
+
+        if post.author_id != requesting_user.id:
+            raise ForbiddenError(detail="You can only edit your own posts.")
+
+        post.text_content = text_content
+        post.save(update_fields=["text_content", "updated_at"])
+
+        return self.get_by_id(post.pk)
+
     def share_post(self, *, post_id: UUID) -> dict[str, str]:
         """Generate shareable deep-link data for a post."""
         post = self.get_by_id(post_id)
@@ -566,6 +584,24 @@ class CommentService(BaseService[Comment]):
         _validate_object_exists(ct, object_id)
 
         return self.get_queryset().filter(content_type=ct, object_id=object_id)
+
+    def update_comment(
+        self,
+        *,
+        comment_id: UUID,
+        requesting_user: User,
+        text: str,
+    ) -> Comment:
+        """Edit comment text. Only the commenter may edit."""
+        comment = self.get_by_id(comment_id)
+
+        if comment.user_id != requesting_user.id:
+            raise ForbiddenError(detail="You can only edit your own comments.")
+
+        comment.text = text
+        comment.save(update_fields=["text", "updated_at"])
+
+        return self.get_by_id(comment.pk)
 
     def delete_comment(self, *, comment_id: UUID, requesting_user: User) -> None:
         """Delete a comment. Only the commenter may delete."""
