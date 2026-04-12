@@ -96,7 +96,7 @@ class TestPostCreateSerializer:
         errors = serializer.errors
         assert "non_field_errors" in errors or "media_files" in errors
 
-    @patch("apps.social.serializers.validate_image_file")
+    @patch("apps.social.mixins.validate_image_file")
     def test_single_image_valid(self, mock_validate):
         """A single image post passes validation."""
         data = {
@@ -108,7 +108,7 @@ class TestPostCreateSerializer:
         assert serializer.is_valid(), serializer.errors
         mock_validate.assert_called_once()
 
-    @patch("apps.social.serializers.validate_video_file")
+    @patch("apps.social.mixins.validate_video_file")
     def test_single_video_valid(self, mock_validate):
         """A single video post passes validation."""
         data = {
@@ -131,7 +131,7 @@ class TestPostCreateSerializer:
         assert not serializer.is_valid()
         assert "media_types" in serializer.errors
 
-    @patch("apps.social.serializers.validate_image_file")
+    @patch("apps.social.mixins.validate_image_file")
     def test_text_with_images_valid(self, mock_validate):
         """A post with both text and images is valid."""
         data = {
@@ -201,7 +201,7 @@ class TestPrayerCreateSerializer:
         serializer = PrayerCreateSerializer(data=data)
         assert not serializer.is_valid()
 
-    @patch("apps.social.serializers.validate_image_file")
+    @patch("apps.social.mixins.validate_image_file")
     def test_prayer_with_images_valid(self, mock_validate):
         """A prayer with images passes validation."""
         data = {

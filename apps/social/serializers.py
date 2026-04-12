@@ -10,6 +10,7 @@ from apps.common.serializers import (
 
 from apps.common.constants import MediaType
 from apps.common.validators import validate_image_file, validate_video_file
+from .mixins import MediaValidationMixin, UserReactionMixin
 from .models import (
     Comment,
     Post,
@@ -60,20 +61,27 @@ def _get_user_reaction_from_annotation(obj: Any, context: dict[str, Any]) -> str
 _SENTINEL: object = object()
 
 
-class PostMediaSerializer(InlineMediaSerializer):
-    """Read-only inline representation of a post's media attachment."""
+class ContentMediaSerializer(InlineMediaSerializer):
+    """Read-only inline representation of a post's or prayer's media attachment."""
 
     class Meta:
         fields = ["id", "file", "media_type", "order"]
 
 
-class PostCreateSerializer(serializers.Serializer):
+# Backwards-compatible aliases so existing imports keep working.
+PostMediaSerializer = ContentMediaSerializer
+PrayerMediaSerializer = ContentMediaSerializer
+
+
+class PostCreateSerializer(MediaValidationMixin, serializers.Serializer):
     """Validates input for creating a new post.
 
     Accepts either ``media_keys`` (UploadThing file keys from client-side
     uploads) or ``media_files`` (legacy server-side upload). ``media_keys``
     is the preferred path.
     """
+
+    content_label = "post"
 
     text_content = serializers.CharField(
         max_length=2000, required=False, default="", allow_blank=True
@@ -97,7 +105,6 @@ class PostCreateSerializer(serializers.Serializer):
         text_content: str = attrs.get("text_content", "")
         media_keys: list[str] = attrs.get("media_keys", [])
         media_files: list[Any] = attrs.get("media_files", [])
-        media_types: list[str] = attrs.get("media_types", [])
         has_media = bool(media_keys) or bool(media_files)
 
         if not text_content and not has_media:
@@ -105,36 +112,7 @@ class PostCreateSerializer(serializers.Serializer):
                 "A post must have text content or at least one media file."
             )
 
-        media_count = len(media_keys) if media_keys else len(media_files)
-
-        if media_count > 0 and len(media_types) != media_count:
-            raise serializers.ValidationError(
-                "media_types must match the number of media items."
-            )
-
-        video_count = sum(1 for mt in media_types if mt == MediaType.VIDEO)
-        image_count = sum(1 for mt in media_types if mt == MediaType.IMAGE)
-
-        if video_count > 1:
-            raise serializers.ValidationError("A post can have at most 1 video.")
-
-        if video_count > 0 and image_count > 0:
-            raise serializers.ValidationError(
-                "A post with a video cannot also have images."
-            )
-
-        if image_count > 10:
-            raise serializers.ValidationError("A post can have at most 10 images.")
-
-        if media_files and not media_keys:
-            for file, media_type in zip(media_files, media_types):
-                if media_type == MediaType.IMAGE:
-                    validate_image_file(file)
-
-                elif media_type == MediaType.VIDEO:
-                    validate_video_file(file)
-
-        return attrs
+        return self.validate_media_fields(attrs)
 
 
 class PostUpdateSerializer(serializers.Serializer):
@@ -143,12 +121,12 @@ class PostUpdateSerializer(serializers.Serializer):
     text_content = serializers.CharField(max_length=2000, allow_blank=True)
 
 
-class PostDetailSerializer(BaseTimestampedSerializer):
+class PostDetailSerializer(UserReactionMixin, BaseTimestampedSerializer):
     """Full post representation including author, media, and engagement counts."""
 
     author = AuthorSerializer(read_only=True)
 
-    media = PostMediaSerializer(many=True, read_only=True)
+    media = ContentMediaSerializer(many=True, read_only=True)
 
     reaction_count = serializers.IntegerField(read_only=True, default=0)
     comment_count = serializers.IntegerField(read_only=True, default=0)
@@ -169,18 +147,13 @@ class PostDetailSerializer(BaseTimestampedSerializer):
             "updated_at",
         ]
 
-    def get_user_reaction(self, obj: Post) -> str | None:
-        """Return the requesting user's emoji_type on this post, or null."""
 
-        return _get_user_reaction_from_annotation(obj, self.context)
-
-
-class PostListSerializer(BaseTimestampedSerializer):
+class PostListSerializer(UserReactionMixin, BaseTimestampedSerializer):
     """Lighter post serializer for feed listings."""
 
     author = AuthorSerializer(read_only=True)
 
-    media = PostMediaSerializer(many=True, read_only=True)
+    media = ContentMediaSerializer(many=True, read_only=True)
 
     reaction_count = serializers.IntegerField(read_only=True, default=0)
     comment_count = serializers.IntegerField(read_only=True, default=0)
@@ -201,19 +174,11 @@ class PostListSerializer(BaseTimestampedSerializer):
             "updated_at",
         ]
 
-    def get_user_reaction(self, obj: Post) -> str | None:
-        return _get_user_reaction_from_annotation(obj, self.context)
 
-
-class PrayerMediaSerializer(InlineMediaSerializer):
-    """Read-only inline representation of a prayer's media attachment."""
-
-    class Meta:
-        fields = ["id", "file", "media_type", "order"]
-
-
-class PrayerCreateSerializer(serializers.Serializer):
+class PrayerCreateSerializer(MediaValidationMixin, serializers.Serializer):
     """Validates input for creating a new prayer request."""
+
+    content_label = "prayer"
 
     title = serializers.CharField(max_length=255)
     description = serializers.CharField(
@@ -235,47 +200,15 @@ class PrayerCreateSerializer(serializers.Serializer):
     )
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
-        media_keys: list[str] = attrs.get("media_keys", [])
-        media_files: list[Any] = attrs.get("media_files", [])
-        media_types: list[str] = attrs.get("media_types", [])
-        media_count = len(media_keys) if media_keys else len(media_files)
-
-        if media_count > 0 and len(media_types) != media_count:
-            raise serializers.ValidationError(
-                "media_types must match the number of media items."
-            )
-
-        video_count = sum(1 for mt in media_types if mt == MediaType.VIDEO)
-        image_count = sum(1 for mt in media_types if mt == MediaType.IMAGE)
-
-        if video_count > 1:
-            raise serializers.ValidationError("A prayer can have at most 1 video.")
-
-        if video_count > 0 and image_count > 0:
-            raise serializers.ValidationError(
-                "A prayer with a video cannot also have images."
-            )
-
-        if image_count > 10:
-            raise serializers.ValidationError("A prayer can have at most 10 images.")
-
-        if media_files and not media_keys:
-            for file, media_type in zip(media_files, media_types):
-                if media_type == MediaType.IMAGE:
-                    validate_image_file(file)
-
-                elif media_type == MediaType.VIDEO:
-                    validate_video_file(file)
-
-        return attrs
+        return self.validate_media_fields(attrs)
 
 
-class PrayerDetailSerializer(BaseTimestampedSerializer):
+class PrayerDetailSerializer(UserReactionMixin, BaseTimestampedSerializer):
     """Full prayer representation with author, media, and engagement counts."""
 
     author = AuthorSerializer(read_only=True)
 
-    media = PrayerMediaSerializer(many=True, read_only=True)
+    media = ContentMediaSerializer(many=True, read_only=True)
 
     reaction_count = serializers.IntegerField(read_only=True, default=0)
     comment_count = serializers.IntegerField(read_only=True, default=0)
@@ -296,16 +229,13 @@ class PrayerDetailSerializer(BaseTimestampedSerializer):
             "updated_at",
         ]
 
-    def get_user_reaction(self, obj: Prayer) -> str | None:
-        return _get_user_reaction_from_annotation(obj, self.context)
 
-
-class PrayerListSerializer(BaseTimestampedSerializer):
+class PrayerListSerializer(UserReactionMixin, BaseTimestampedSerializer):
     """Lighter prayer serializer for feed listings."""
 
     author = AuthorSerializer(read_only=True)
 
-    media = PrayerMediaSerializer(many=True, read_only=True)
+    media = ContentMediaSerializer(many=True, read_only=True)
 
     reaction_count = serializers.IntegerField(read_only=True, default=0)
     comment_count = serializers.IntegerField(read_only=True, default=0)
@@ -325,9 +255,6 @@ class PrayerListSerializer(BaseTimestampedSerializer):
             "created_at",
             "updated_at",
         ]
-
-    def get_user_reaction(self, obj: Prayer) -> str | None:
-        return _get_user_reaction_from_annotation(obj, self.context)
 
 
 class ReactionSerializer(BaseModelSerializer):

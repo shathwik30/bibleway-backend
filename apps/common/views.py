@@ -1,4 +1,5 @@
 from __future__ import annotations
+from functools import cached_property
 from typing import Any
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -77,11 +78,27 @@ class BaseAPIView(APIView):
 
 
 class BaseModelViewSet(ModelViewSet):
-    """Base viewset with standard pagination and permissions."""
+    """Base viewset with standard pagination and permissions.
+
+    Subclasses may set ``service_class`` to auto-instantiate a service
+    accessible via ``self.service``.  The instance is created lazily on
+    first access and cached for the lifetime of the viewset instance.
+    """
 
     permission_classes = [IsAuthenticated]
 
     pagination_class = StandardPageNumberPagination
+
+    service_class: type | None = None
+
+    @cached_property
+    def service(self) -> Any:
+        """Return a lazily-instantiated service for this viewset."""
+        if self.service_class is not None:
+            return self.service_class()
+        raise NotImplementedError(
+            f"Set service_class on {type(self).__name__} or override the service property."
+        )
 
     def get_serializer_context(self) -> dict[str, Any]:
         context = super().get_serializer_context()

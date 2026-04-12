@@ -1,6 +1,8 @@
 from __future__ import annotations
 import logging
+from collections.abc import Callable
 from datetime import timedelta
+from typing import Any
 from uuid import UUID
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import UploadedFile
@@ -26,7 +28,7 @@ from django.db.models.functions import Coalesce, Least
 from django.db import models as db_models
 from apps.accounts.models import FollowRelationship, User
 from apps.common.exceptions import BadRequestError, ForbiddenError, NotFoundError
-from apps.common.services import BaseService
+from apps.common.services import BaseService, BlockFilterMixin
 from apps.common.utils import build_notification_data, get_blocked_user_ids
 from .models import (
     Comment,
@@ -55,6 +57,54 @@ REACTABLE_MODELS: set[str] = {"post", "prayer"}
 COMMENTABLE_MODELS: set[str] = {"post", "prayer"}
 
 REPORTABLE_MODELS: set[str] = {"post", "prayer", "comment", "user"}
+
+
+def annotate_user_reaction(
+    qs: QuerySet,
+    *,
+    model_class: type,
+    requesting_user: User,
+) -> QuerySet:
+    """Annotate ``user_reaction_type`` on a queryset to avoid N+1 queries.
+
+    Works for any model that can receive reactions (Post, Prayer, etc.).
+    """
+    ct = ContentType.objects.get_for_model(model_class)
+    user_reaction_sq = Reaction.objects.filter(
+        content_type=ct,
+        object_id=OuterRef("pk"),
+        user_id=requesting_user.id,
+    ).values("emoji_type")[:1]
+
+    return qs.annotate(
+        user_reaction_type=Subquery(user_reaction_sq, output_field=CharField()),
+    )
+
+
+def _generate_share_data(content_type: str, pk: UUID, preview: str) -> dict[str, str]:
+    """Generate shareable deep-link data for a piece of content."""
+    return {
+        "type": content_type,
+        "id": str(pk),
+        "deep_link": f"bibleway://{content_type}s/{pk}",
+        "preview": preview[:100] if preview else "",
+    }
+
+
+def _dispatch_notification(
+    *,
+    label: str,
+    callback: Callable[[], None],
+) -> None:
+    """Execute a notification callback, swallowing and logging failures.
+
+    ``label`` is used only in the warning log message (e.g. "reaction",
+    "comment", "reply").
+    """
+    try:
+        callback()
+    except Exception:
+        logger.warning("Failed to send %s notification", label, exc_info=True)
 
 
 def _resolve_content_type(model_name: str, allowed: set[str]) -> ContentType:
@@ -132,10 +182,11 @@ def _check_block_for_content(
         raise ForbiddenError(detail="You cannot interact with this content.")
 
 
-class PostService(BaseService[Post]):
+class PostService(BlockFilterMixin, BaseService[Post]):
     """Business logic for creating, reading, and managing posts."""
 
     model = Post
+    block_field = "author_id"
 
     def get_queryset(self) -> QuerySet[Post]:
         return (
@@ -151,21 +202,11 @@ class PostService(BaseService[Post]):
         self, qs: QuerySet[Post], *, requesting_user: User
     ) -> QuerySet[Post]:
         """Annotate user_reaction_type to avoid N+1 queries in serializers."""
-        ct = ContentType.objects.get_for_model(Post)
-        user_reaction_sq = Reaction.objects.filter(
-            content_type=ct,
-            object_id=OuterRef("pk"),
-            user_id=requesting_user.id,
-        ).values("emoji_type")[:1]
-
-        return qs.annotate(
-            user_reaction_type=Subquery(user_reaction_sq, output_field=CharField()),
-        )
+        return annotate_user_reaction(qs, model_class=Post, requesting_user=requesting_user)
 
     def _get_annotated_queryset(self, *, requesting_user: User) -> QuerySet[Post]:
         """Base queryset with block filtering, count annotations, and user reaction."""
-        blocked_user_ids = get_blocked_user_ids(requesting_user.id)
-        qs = self.get_queryset().exclude(author_id__in=blocked_user_ids)
+        qs = self.exclude_blocked(self.get_queryset(), requesting_user.id)
 
         return self._annotate_user_reaction(qs, requesting_user=requesting_user)
 
@@ -258,10 +299,8 @@ class PostService(BaseService[Post]):
 
     def get_by_id_for_user(self, pk: UUID, *, requesting_user: User) -> Post:
         """Retrieve a single post with block filtering and count annotations."""
-        blocked_user_ids = get_blocked_user_ids(requesting_user.id)
-
         try:
-            qs = self.get_queryset().exclude(author_id__in=blocked_user_ids)
+            qs = self.exclude_blocked(self.get_queryset(), requesting_user.id)
             qs = self._annotate_user_reaction(qs, requesting_user=requesting_user)
 
             return qs.get(pk=pk)
@@ -276,9 +315,9 @@ class PostService(BaseService[Post]):
         requesting_user: User,
     ) -> QuerySet[Post]:
         """Return posts by a specific user, respecting block rules."""
-        blocked_user_ids = get_blocked_user_ids(requesting_user.id)
+        blocked_ids = get_blocked_user_ids(requesting_user.id)
 
-        if user_id in blocked_user_ids:
+        if user_id in blocked_ids:
             return Post.objects.none()
 
         qs = self.get_queryset().filter(author_id=user_id)
@@ -360,18 +399,14 @@ class PostService(BaseService[Post]):
         """Generate shareable deep-link data for a post."""
         post = self.get_by_id(post_id)
 
-        return {
-            "type": "post",
-            "id": str(post.pk),
-            "deep_link": f"bibleway://posts/{post.pk}",
-            "preview": post.text_content[:100] if post.text_content else "",
-        }
+        return _generate_share_data("post", post.pk, post.text_content or "")
 
 
-class PrayerService(BaseService[Prayer]):
+class PrayerService(BlockFilterMixin, BaseService[Prayer]):
     """Business logic for prayer requests."""
 
     model = Prayer
+    block_field = "author_id"
 
     def get_queryset(self) -> QuerySet[Prayer]:
         return (
@@ -387,21 +422,11 @@ class PrayerService(BaseService[Prayer]):
         self, qs: QuerySet[Prayer], *, requesting_user: User
     ) -> QuerySet[Prayer]:
         """Annotate user_reaction_type to avoid N+1 queries in serializers."""
-        ct = ContentType.objects.get_for_model(Prayer)
-        user_reaction_sq = Reaction.objects.filter(
-            content_type=ct,
-            object_id=OuterRef("pk"),
-            user_id=requesting_user.id,
-        ).values("emoji_type")[:1]
-
-        return qs.annotate(
-            user_reaction_type=Subquery(user_reaction_sq, output_field=CharField()),
-        )
+        return annotate_user_reaction(qs, model_class=Prayer, requesting_user=requesting_user)
 
     def _get_annotated_queryset(self, *, requesting_user: User) -> QuerySet[Prayer]:
         """Base queryset with block filtering, count annotations, and user reaction."""
-        blocked_user_ids = get_blocked_user_ids(requesting_user.id)
-        qs = self.get_queryset().exclude(author_id__in=blocked_user_ids)
+        qs = self.exclude_blocked(self.get_queryset(), requesting_user.id)
 
         return self._annotate_user_reaction(qs, requesting_user=requesting_user)
 
@@ -416,10 +441,8 @@ class PrayerService(BaseService[Prayer]):
 
     def get_by_id_for_user(self, pk: UUID, *, requesting_user: User) -> Prayer:
         """Retrieve a single prayer with block filtering and count annotations."""
-        blocked_user_ids = get_blocked_user_ids(requesting_user.id)
-
         try:
-            qs = self.get_queryset().exclude(author_id__in=blocked_user_ids)
+            qs = self.exclude_blocked(self.get_queryset(), requesting_user.id)
             qs = self._annotate_user_reaction(qs, requesting_user=requesting_user)
 
             return qs.get(pk=pk)
@@ -434,9 +457,9 @@ class PrayerService(BaseService[Prayer]):
         requesting_user: User,
     ) -> QuerySet[Prayer]:
         """Return prayers by a specific user, respecting block rules."""
-        blocked_user_ids = get_blocked_user_ids(requesting_user.id)
+        blocked_ids = get_blocked_user_ids(requesting_user.id)
 
-        if user_id in blocked_user_ids:
+        if user_id in blocked_ids:
             return Prayer.objects.none()
 
         qs = self.get_queryset().filter(author_id=user_id)
@@ -491,12 +514,7 @@ class PrayerService(BaseService[Prayer]):
         """Generate shareable deep-link data for a prayer."""
         prayer = self.get_by_id(prayer_id)
 
-        return {
-            "type": "prayer",
-            "id": str(prayer.pk),
-            "deep_link": f"bibleway://prayers/{prayer.pk}",
-            "preview": prayer.title[:100] if prayer.title else "",
-        }
+        return _generate_share_data("prayer", prayer.pk, prayer.title or "")
 
 
 class ReactionService:
@@ -801,7 +819,7 @@ def _send_reaction_notification(
 ) -> None:
     """Notify the content author when someone reacts to their post/prayer."""
 
-    try:
+    def _do_send() -> None:
         author_id = _get_content_author_id(ct, object_id)
 
         if author_id is None or author_id == user.id:
@@ -819,8 +837,7 @@ def _send_reaction_notification(
             data=build_notification_data("reaction", **{data_key: object_id}),
         )
 
-    except Exception:
-        logger.warning("Failed to send reaction notification", exc_info=True)
+    _dispatch_notification(label="reaction", callback=_do_send)
 
 
 def _send_comment_notification(
@@ -828,7 +845,7 @@ def _send_comment_notification(
 ) -> None:
     """Notify the content author when someone comments on their post/prayer."""
 
-    try:
+    def _do_send() -> None:
         author_id = _get_content_author_id(ct, object_id)
 
         if author_id is None or author_id == user.id:
@@ -848,14 +865,13 @@ def _send_comment_notification(
             data=build_notification_data(ntype, **{data_key: object_id}),
         )
 
-    except Exception:
-        logger.warning("Failed to send comment notification", exc_info=True)
+    _dispatch_notification(label="comment", callback=_do_send)
 
 
 def _send_reply_notification(user: User, comment: Comment, text: str) -> None:
     """Notify the comment author when someone replies to their comment."""
 
-    try:
+    def _do_send() -> None:
         if comment.user_id == user.id:
             return
 
@@ -879,5 +895,4 @@ def _send_reply_notification(user: User, comment: Comment, text: str) -> None:
             data=data,
         )
 
-    except Exception:
-        logger.warning("Failed to send reply notification", exc_info=True)
+    _dispatch_notification(label="reply", callback=_do_send)

@@ -4,6 +4,7 @@ from uuid import UUID
 from django.db.models import QuerySet
 from .exceptions import NotFoundError
 from .types import ModelType
+from .utils import get_blocked_user_ids
 
 
 class BaseService(Generic[ModelType]):
@@ -144,3 +145,18 @@ class BaseUserScopedService(BaseService[ModelType]):
             raise NotFoundError(
                 detail=f"{self.model.__name__} with id '{pk}' not found."
             )
+
+
+class BlockFilterMixin:
+    """Mixin that provides a reusable method for excluding content from blocked users.
+
+    Set ``block_field`` to the queryset field that holds the author/user FK
+    (defaults to ``"author_id"``).
+    """
+
+    block_field: str = "author_id"
+
+    def exclude_blocked(self, qs: QuerySet, requesting_user_id: UUID) -> QuerySet:
+        """Exclude items whose ``block_field`` is in the blocked-user set."""
+        blocked_ids = get_blocked_user_ids(requesting_user_id)
+        return qs.exclude(**{f"{self.block_field}__in": blocked_ids})

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from functools import cached_property
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 from django.db.models import QuerySet
@@ -67,15 +68,19 @@ class PostViewSet(FeedViewSet):
 
     pagination_class = BoostedFeedCursorPagination
 
-    def __init__(self, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
-        self._post_service = PostService()
-        self._reaction_service = ReactionService()
-        self._comment_service = CommentService()
+    service_class = PostService
+
+    @cached_property
+    def _reaction_service(self) -> ReactionService:
+        return ReactionService()
+
+    @cached_property
+    def _comment_service(self) -> CommentService:
+        return CommentService()
 
     def get_queryset(self) -> QuerySet[Post]:
 
-        return self._post_service.get_feed(requesting_user=self.request.user)
+        return self.service.get_feed(requesting_user=self.request.user)
 
     def get_serializer_class(self) -> type[BaseSerializer]:
 
@@ -109,7 +114,7 @@ class PostViewSet(FeedViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            queryset = self._post_service.get_user_posts(
+            queryset = self.service.get_user_posts(
                 user_id=author_uuid,
                 requesting_user=request.user,
             )
@@ -136,7 +141,7 @@ class PostViewSet(FeedViewSet):
         serializer = PostCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        post = self._post_service.create_post(
+        post = self.service.create_post(
             author=request.user,
             text_content=data.get("text_content", ""),
             media_keys=data.get("media_keys"),
@@ -148,7 +153,7 @@ class PostViewSet(FeedViewSet):
         return Response(out.data, status=status.HTTP_201_CREATED)
 
     def retrieve(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        post = self._post_service.get_by_id_for_user(
+        post = self.service.get_by_id_for_user(
             kwargs["pk"], requesting_user=request.user
         )
         serializer = PostDetailSerializer(post, context=self.get_serializer_context())
@@ -158,7 +163,7 @@ class PostViewSet(FeedViewSet):
     def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         serializer = PostUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        post = self._post_service.update_post(
+        post = self.service.update_post(
             post_id=kwargs["pk"],
             requesting_user=request.user,
             text_content=serializer.validated_data["text_content"],
@@ -168,7 +173,7 @@ class PostViewSet(FeedViewSet):
         return Response(out.data)
 
     def destroy(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        self._post_service.delete_post(
+        self.service.delete_post(
             post_id=kwargs["pk"], requesting_user=request.user
         )
 
@@ -250,7 +255,7 @@ class PostViewSet(FeedViewSet):
     @action(detail=True, methods=["get"], url_path="share")
     def share(self, request: Request, pk: UUID | None = None) -> Response:
         """Return deep-link / share data for a post."""
-        share_data = self._post_service.share_post(post_id=pk)
+        share_data = self.service.share_post(post_id=pk)
 
         return Response(share_data)
 
@@ -273,15 +278,19 @@ class PrayerViewSet(FeedViewSet):
 
     pagination_class = FeedCursorPagination
 
-    def __init__(self, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
-        self._prayer_service = PrayerService()
-        self._reaction_service = ReactionService()
-        self._comment_service = CommentService()
+    service_class = PrayerService
+
+    @cached_property
+    def _reaction_service(self) -> ReactionService:
+        return ReactionService()
+
+    @cached_property
+    def _comment_service(self) -> CommentService:
+        return CommentService()
 
     def get_queryset(self) -> QuerySet[Prayer]:
 
-        return self._prayer_service.get_feed(requesting_user=self.request.user)
+        return self.service.get_feed(requesting_user=self.request.user)
 
     def get_serializer_class(self) -> type[BaseSerializer]:
 
@@ -312,7 +321,7 @@ class PrayerViewSet(FeedViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            queryset = self._prayer_service.get_user_prayers(
+            queryset = self.service.get_user_prayers(
                 user_id=author_uuid,
                 requesting_user=request.user,
             )
@@ -339,7 +348,7 @@ class PrayerViewSet(FeedViewSet):
         serializer = PrayerCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        prayer = self._prayer_service.create_prayer(
+        prayer = self.service.create_prayer(
             author=request.user,
             title=data["title"],
             description=data.get("description", ""),
@@ -352,7 +361,7 @@ class PrayerViewSet(FeedViewSet):
         return Response(out.data, status=status.HTTP_201_CREATED)
 
     def retrieve(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        prayer = self._prayer_service.get_by_id_for_user(
+        prayer = self.service.get_by_id_for_user(
             kwargs["pk"], requesting_user=request.user
         )
         serializer = PrayerDetailSerializer(
@@ -362,7 +371,7 @@ class PrayerViewSet(FeedViewSet):
         return Response(serializer.data)
 
     def destroy(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        self._prayer_service.delete_prayer(
+        self.service.delete_prayer(
             prayer_id=kwargs["pk"], requesting_user=request.user
         )
 
@@ -444,7 +453,7 @@ class PrayerViewSet(FeedViewSet):
     @action(detail=True, methods=["get"], url_path="share")
     def share(self, request: Request, pk: UUID | None = None) -> Response:
         """Return deep-link / share data for a prayer."""
-        share_data = self._prayer_service.share_prayer(prayer_id=pk)
+        share_data = self.service.share_prayer(prayer_id=pk)
 
         return Response(share_data)
 
@@ -463,9 +472,7 @@ class CommentViewSet(BaseModelViewSet):
 
     pagination_class = StandardPageNumberPagination
 
-    def __init__(self, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
-        self._comment_service = CommentService()
+    service_class = CommentService
 
     def get_queryset(self) -> QuerySet[Comment]:
 
@@ -473,12 +480,12 @@ class CommentViewSet(BaseModelViewSet):
         object_id = self.request.query_params.get("object_id")
 
         if object_id:
-            return self._comment_service.list_comments_for_content(
+            return self.service.list_comments_for_content(
                 content_type_model=content_type_model,
                 object_id=UUID(object_id),
             )
 
-        return self._comment_service.get_queryset()
+        return self.service.get_queryset()
 
     def get_serializer_class(self) -> type[BaseSerializer]:
 
@@ -494,7 +501,7 @@ class CommentViewSet(BaseModelViewSet):
         serializer = CommentCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-        comment = self._comment_service.create_comment(
+        comment = self.service.create_comment(
             user=request.user,
             content_type_model=data["content_type_model"],
             object_id=data["object_id"],
@@ -507,7 +514,7 @@ class CommentViewSet(BaseModelViewSet):
     def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         serializer = CommentUpdateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        comment = self._comment_service.update_comment(
+        comment = self.service.update_comment(
             comment_id=kwargs["pk"],
             requesting_user=request.user,
             text=serializer.validated_data["text"],
@@ -517,7 +524,7 @@ class CommentViewSet(BaseModelViewSet):
         return Response(out.data)
 
     def destroy(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        self._comment_service.delete_comment(
+        self.service.delete_comment(
             comment_id=kwargs["pk"], requesting_user=request.user
         )
 
@@ -536,20 +543,18 @@ class ReplyViewSet(BaseModelViewSet):
 
     pagination_class = StandardPageNumberPagination
 
-    def __init__(self, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
-        self._reply_service = ReplyService()
+    service_class = ReplyService
 
     def get_queryset(self) -> QuerySet[Reply]:
 
         comment_pk = self.kwargs.get("comment_pk")
 
         if comment_pk:
-            return self._reply_service.list_replies_for_comment(
+            return self.service.list_replies_for_comment(
                 comment_id=UUID(str(comment_pk))
             )
 
-        return self._reply_service.get_queryset()
+        return self.service.get_queryset()
 
     def get_serializer_class(self) -> type[BaseSerializer]:
 
@@ -562,7 +567,7 @@ class ReplyViewSet(BaseModelViewSet):
         serializer = ReplyCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         comment_pk = self.kwargs["comment_pk"]
-        reply = self._reply_service.create_reply(
+        reply = self.service.create_reply(
             user=request.user,
             comment_id=UUID(str(comment_pk)),
             text=serializer.validated_data["text"],
@@ -572,7 +577,7 @@ class ReplyViewSet(BaseModelViewSet):
         return Response(out.data, status=status.HTTP_201_CREATED)
 
     def destroy(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        self._reply_service.delete_reply(
+        self.service.delete_reply(
             reply_id=kwargs["pk"], requesting_user=request.user
         )
 
